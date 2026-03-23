@@ -15,6 +15,7 @@ const CANONICAL_PACKAGE_ID_ALIASES = {
   "sglang-provider": "sglang",
   "vllm-provider": "vllm",
 };
+const LOCALE_ID_RE = /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/u;
 
 function readIfExists(filePath) {
   try {
@@ -69,6 +70,90 @@ function normalizeObject(value) {
   return value;
 }
 
+function normalizeOptionalString(value) {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function normalizeLocalizationManifest(value) {
+  const localization = normalizeObject(value);
+  if (!localization) {
+    return undefined;
+  }
+
+  const locale = normalizeOptionalString(localization.locale);
+  const resourceKinds = normalizeStringList(localization.resourceKinds)?.filter(
+    (kind) => kind === "docs" || kind === "control-ui" || kind === "meta" || kind === "glossary",
+  );
+  if (!locale || !LOCALE_ID_RE.test(locale) || !resourceKinds || resourceKinds.length === 0) {
+    return undefined;
+  }
+
+  const compatibility = normalizeObject(localization.compatibility)
+    ? {
+        ...(normalizeOptionalString(localization.compatibility.minOpenClawVersion)
+          ? {
+              minOpenClawVersion: normalizeOptionalString(
+                localization.compatibility.minOpenClawVersion,
+              ),
+            }
+          : {}),
+        ...(normalizeOptionalString(localization.compatibility.docsSchemaVersion)
+          ? {
+              docsSchemaVersion: normalizeOptionalString(
+                localization.compatibility.docsSchemaVersion,
+              ),
+            }
+          : {}),
+        ...(normalizeOptionalString(localization.compatibility.controlUiSchemaVersion)
+          ? {
+              controlUiSchemaVersion: normalizeOptionalString(
+                localization.compatibility.controlUiSchemaVersion,
+              ),
+            }
+          : {}),
+      }
+    : undefined;
+  const completeness = normalizeObject(localization.completeness)
+    ? {
+        ...(localization.completeness.docsCoverage === "full" ||
+        localization.completeness.docsCoverage === "partial"
+          ? { docsCoverage: localization.completeness.docsCoverage }
+          : {}),
+        ...(localization.completeness.controlUiCoverage === "full" ||
+        localization.completeness.controlUiCoverage === "partial"
+          ? { controlUiCoverage: localization.completeness.controlUiCoverage }
+          : {}),
+      }
+    : undefined;
+
+  return {
+    locale,
+    resourceKinds,
+    ...(normalizeOptionalString(localization.docsRoot)
+      ? { docsRoot: normalizeOptionalString(localization.docsRoot) }
+      : {}),
+    ...(normalizeOptionalString(localization.docsNavPath)
+      ? { docsNavPath: normalizeOptionalString(localization.docsNavPath) }
+      : {}),
+    ...(normalizeOptionalString(localization.controlUiTranslationPath)
+      ? {
+          controlUiTranslationPath: normalizeOptionalString(localization.controlUiTranslationPath),
+        }
+      : {}),
+    ...(normalizeOptionalString(localization.glossaryPath)
+      ? { glossaryPath: normalizeOptionalString(localization.glossaryPath) }
+      : {}),
+    ...(normalizeOptionalString(localization.provenancePath)
+      ? { provenancePath: normalizeOptionalString(localization.provenancePath) }
+      : {}),
+    ...(normalizeOptionalString(localization.sourceManifestPath)
+      ? { sourceManifestPath: normalizeOptionalString(localization.sourceManifestPath) }
+      : {}),
+    ...(compatibility && Object.keys(compatibility).length > 0 ? { compatibility } : {}),
+    ...(completeness && Object.keys(completeness).length > 0 ? { completeness } : {}),
+  };
+}
+
 function normalizePackageManifest(raw) {
   const packageManifest = normalizeObject(raw?.[MANIFEST_KEY]);
   if (!packageManifest) {
@@ -119,6 +204,9 @@ function normalizePluginManifest(raw) {
       ? { providerAuthChoices: raw.providerAuthChoices }
       : {}),
     ...(normalizeStringList(raw.skills) ? { skills: normalizeStringList(raw.skills) } : {}),
+    ...(normalizeLocalizationManifest(raw.localization)
+      ? { localization: normalizeLocalizationManifest(raw.localization) }
+      : {}),
     ...(typeof raw.name === "string" ? { name: raw.name.trim() } : {}),
     ...(typeof raw.description === "string" ? { description: raw.description.trim() } : {}),
     ...(typeof raw.version === "string" ? { version: raw.version.trim() } : {}),

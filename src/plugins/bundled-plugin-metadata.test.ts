@@ -37,6 +37,25 @@ describe("bundled plugin metadata", () => {
     expect(discord?.manifest.id).toBe("discord");
   });
 
+  it("captures localization metadata for bundled locale plugins", () => {
+    const deLocale = BUNDLED_PLUGIN_METADATA.find((entry) => entry.dirName === "de-locale");
+
+    expect(deLocale?.manifest.localization).toEqual({
+      locale: "de",
+      resourceKinds: ["docs", "meta"],
+      docsRoot: "./resources/docs/de",
+      docsNavPath: "./resources/docs-nav.de.json",
+      provenancePath: "./resources/provenance.json",
+      sourceManifestPath: "./resources/source-manifest.json",
+      compatibility: {
+        docsSchemaVersion: "1",
+      },
+      completeness: {
+        docsCoverage: "partial",
+      },
+    });
+  });
+
   it("prefers built generated paths when present and falls back to source paths", () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-bundled-plugin-metadata-"));
     tempDirs.push(tempRoot);

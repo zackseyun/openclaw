@@ -8,6 +8,36 @@ import type { PluginConfigUiHint, PluginKind } from "./types.js";
 export const PLUGIN_MANIFEST_FILENAME = "openclaw.plugin.json";
 export const PLUGIN_MANIFEST_FILENAMES = [PLUGIN_MANIFEST_FILENAME] as const;
 
+export type PluginLocalizationResourceKind = "docs" | "control-ui" | "meta" | "glossary";
+
+export type PluginLocalizationCoverage = "full" | "partial";
+
+const LOCALE_ID_RE = /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/;
+
+export function isValidLocaleId(value: string): boolean {
+  return LOCALE_ID_RE.test(value);
+}
+
+export type PluginLocalizationManifest = {
+  locale: string;
+  resourceKinds: PluginLocalizationResourceKind[];
+  docsRoot?: string;
+  docsNavPath?: string;
+  controlUiTranslationPath?: string;
+  glossaryPath?: string;
+  provenancePath?: string;
+  sourceManifestPath?: string;
+  compatibility?: {
+    minOpenClawVersion?: string;
+    docsSchemaVersion?: string;
+    controlUiSchemaVersion?: string;
+  };
+  completeness?: {
+    docsCoverage?: PluginLocalizationCoverage;
+    controlUiCoverage?: PluginLocalizationCoverage;
+  };
+};
+
 export type PluginManifest = {
   id: string;
   configSchema: Record<string, unknown>;
@@ -23,6 +53,7 @@ export type PluginManifest = {
    */
   providerAuthChoices?: PluginManifestProviderAuthChoice[];
   skills?: string[];
+  localization?: PluginLocalizationManifest;
   name?: string;
   description?: string;
   version?: string;
@@ -137,6 +168,91 @@ function normalizeProviderAuthChoices(
   return normalized.length > 0 ? normalized : undefined;
 }
 
+function normalizeOptionalString(value: unknown): string | undefined {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  return trimmed ? trimmed : undefined;
+}
+
+function normalizeLocalizationManifest(value: unknown): PluginLocalizationManifest | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const locale = typeof value.locale === "string" ? value.locale.trim() : "";
+  const resourceKinds = normalizeStringList(value.resourceKinds).filter(
+    (kind): kind is PluginLocalizationResourceKind =>
+      kind === "docs" || kind === "control-ui" || kind === "meta" || kind === "glossary",
+  );
+  if (!locale || !isValidLocaleId(locale) || resourceKinds.length === 0) {
+    return undefined;
+  }
+
+  const compatibility = (() => {
+    if (!isRecord(value.compatibility)) {
+      return undefined;
+    }
+    const normalized: NonNullable<PluginLocalizationManifest["compatibility"]> = {};
+    const minOpenClawVersion = normalizeOptionalString(value.compatibility.minOpenClawVersion);
+    const docsSchemaVersion = normalizeOptionalString(value.compatibility.docsSchemaVersion);
+    const controlUiSchemaVersion = normalizeOptionalString(
+      value.compatibility.controlUiSchemaVersion,
+    );
+    if (minOpenClawVersion) {
+      normalized.minOpenClawVersion = minOpenClawVersion;
+    }
+    if (docsSchemaVersion) {
+      normalized.docsSchemaVersion = docsSchemaVersion;
+    }
+    if (controlUiSchemaVersion) {
+      normalized.controlUiSchemaVersion = controlUiSchemaVersion;
+    }
+    return Object.keys(normalized).length > 0 ? normalized : undefined;
+  })();
+  const completeness = (() => {
+    if (!isRecord(value.completeness)) {
+      return undefined;
+    }
+    const normalized: NonNullable<PluginLocalizationManifest["completeness"]> = {};
+    if (
+      value.completeness.docsCoverage === "full" ||
+      value.completeness.docsCoverage === "partial"
+    ) {
+      normalized.docsCoverage = value.completeness.docsCoverage;
+    }
+    if (
+      value.completeness.controlUiCoverage === "full" ||
+      value.completeness.controlUiCoverage === "partial"
+    ) {
+      normalized.controlUiCoverage = value.completeness.controlUiCoverage;
+    }
+    return Object.keys(normalized).length > 0 ? normalized : undefined;
+  })();
+
+  return {
+    locale,
+    resourceKinds,
+    ...(normalizeOptionalString(value.docsRoot)
+      ? { docsRoot: normalizeOptionalString(value.docsRoot) }
+      : {}),
+    ...(normalizeOptionalString(value.docsNavPath)
+      ? { docsNavPath: normalizeOptionalString(value.docsNavPath) }
+      : {}),
+    ...(normalizeOptionalString(value.controlUiTranslationPath)
+      ? { controlUiTranslationPath: normalizeOptionalString(value.controlUiTranslationPath) }
+      : {}),
+    ...(normalizeOptionalString(value.glossaryPath)
+      ? { glossaryPath: normalizeOptionalString(value.glossaryPath) }
+      : {}),
+    ...(normalizeOptionalString(value.provenancePath)
+      ? { provenancePath: normalizeOptionalString(value.provenancePath) }
+      : {}),
+    ...(normalizeOptionalString(value.sourceManifestPath)
+      ? { sourceManifestPath: normalizeOptionalString(value.sourceManifestPath) }
+      : {}),
+    ...(compatibility && Object.keys(compatibility).length > 0 ? { compatibility } : {}),
+    ...(completeness && Object.keys(completeness).length > 0 ? { completeness } : {}),
+  };
+}
+
 export function resolvePluginManifestPath(rootDir: string): string {
   for (const filename of PLUGIN_MANIFEST_FILENAMES) {
     const candidate = path.join(rootDir, filename);
@@ -202,6 +318,33 @@ export function loadPluginManifest(
   const providerAuthEnvVars = normalizeStringListRecord(raw.providerAuthEnvVars);
   const providerAuthChoices = normalizeProviderAuthChoices(raw.providerAuthChoices);
   const skills = normalizeStringList(raw.skills);
+  const localization = normalizeLocalizationManifest(raw.localization);
+  if (raw.localization !== undefined && !localization) {
+    return {
+      ok: false,
+      error: "plugin manifest localization block is invalid",
+      manifestPath,
+    };
+  }
+  if (localization?.resourceKinds.includes("docs")) {
+    if (!localization.docsRoot || !localization.docsNavPath) {
+      return {
+        ok: false,
+        error: "plugin manifest localization.docs requires docsRoot and docsNavPath",
+        manifestPath,
+      };
+    }
+  }
+  if (
+    localization?.resourceKinds.includes("control-ui") &&
+    !localization.controlUiTranslationPath
+  ) {
+    return {
+      ok: false,
+      error: "plugin manifest localization.control-ui requires controlUiTranslationPath",
+      manifestPath,
+    };
+  }
 
   let uiHints: Record<string, PluginConfigUiHint> | undefined;
   if (isRecord(raw.uiHints)) {
@@ -220,6 +363,7 @@ export function loadPluginManifest(
       providerAuthEnvVars,
       providerAuthChoices,
       skills,
+      localization,
       name,
       description,
       version,

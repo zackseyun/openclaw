@@ -128,10 +128,49 @@ Those belong in your plugin code and `package.json`.
 | `providerAuthEnvVars` | No       | `Record<string, string[]>`       | Cheap provider-auth env metadata that OpenClaw can inspect without loading plugin code.                                      |
 | `providerAuthChoices` | No       | `object[]`                       | Cheap auth-choice metadata for onboarding pickers, preferred-provider resolution, and simple CLI flag wiring.                |
 | `skills`              | No       | `string[]`                       | Skill directories to load, relative to the plugin root.                                                                      |
+| `localization`        | No       | `object`                         | Experimental locale-pack metadata for docs or UI translation resources shipped with the plugin.                              |
 | `name`                | No       | `string`                         | Human-readable plugin name.                                                                                                  |
 | `description`         | No       | `string`                         | Short summary shown in plugin surfaces.                                                                                      |
 | `version`             | No       | `string`                         | Informational plugin version.                                                                                                |
 | `uiHints`             | No       | `Record<string, object>`         | UI labels, placeholders, and sensitivity hints for config fields.                                                            |
+
+## localization reference
+
+`localization` is an experimental metadata block for locale-pack style plugins.
+It lets a plugin declare non-runtime translation resources such as localized
+Mintlify docs trees, docs navigation fragments, Control UI translation payloads,
+and provenance metadata.
+
+```json
+{
+  "localization": {
+    "locale": "de",
+    "resourceKinds": ["docs", "meta"],
+    "docsRoot": "./resources/docs/de",
+    "docsNavPath": "./resources/docs-nav.de.json",
+    "provenancePath": "./resources/provenance.json"
+  }
+}
+```
+
+Current supported fields:
+
+| Field                      | Required | Type                                                    | What it means                                                                                                    |
+| -------------------------- | -------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `locale`                   | Yes      | `string`                                                | Locale id, for example `de` or `zh-CN`. Must be a safe locale identifier, not a filesystem path.                 |
+| `resourceKinds`            | Yes      | `Array<"docs" \| "control-ui" \| "meta" \| "glossary">` | Declares which localization resource families the plugin ships.                                                  |
+| `docsRoot`                 | No       | `string`                                                | Root directory for localized docs pages. Required when `resourceKinds` includes `"docs"`.                        |
+| `docsNavPath`              | No       | `string`                                                | JSON file that contributes the locale's Mintlify language tree. Required when `resourceKinds` includes `"docs"`. |
+| `controlUiTranslationPath` | No       | `string`                                                | JSON translation payload for future Control UI locale-pack loading.                                              |
+| `glossaryPath`             | No       | `string`                                                | Optional locale glossary metadata.                                                                               |
+| `provenancePath`           | No       | `string`                                                | Optional provenance/attribution metadata for translated resources.                                               |
+| `sourceManifestPath`       | No       | `string`                                                | Optional mapping file that describes source-to-translated resource relationships.                                |
+| `compatibility`            | No       | `object`                                                | Optional host/docs/UI compatibility hints.                                                                       |
+| `completeness`             | No       | `object`                                                | Optional coverage metadata such as `full` or `partial`.                                                          |
+
+This metadata does not register runtime behavior by itself. It only tells
+OpenClaw where locale resources live so other build-time or runtime flows can
+consume them safely.
 
 ## providerAuthChoices reference
 

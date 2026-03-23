@@ -1,0 +1,24 @@
+{
+  "id": "de-locale",
+  "name": "German Locale Prototype",
+  "description": "Prototype German locale plugin for docs materialization.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  },
+  "localization": {
+    "locale": "de",
+    "resourceKinds": ["docs", "meta"],
+    "docsRoot": "./resources/docs/de",
+    "docsNavPath": "./resources/docs-nav.de.json",
+    "provenancePath": "./resources/provenance.json",
+    "sourceManifestPath": "./resources/source-manifest.json",
+    "compatibility": {
+      "docsSchemaVersion": "1"
+    },
+    "completeness": {
+      "docsCoverage": "partial"
+    }
+  }
+}

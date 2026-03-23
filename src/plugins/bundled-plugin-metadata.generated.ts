@@ -469,6 +469,44 @@ export const GENERATED_BUNDLED_PLUGIN_METADATA = [
     },
   },
   {
+    dirName: "de-locale",
+    idHint: "de-locale",
+    source: {
+      source: "./index.ts",
+      built: "index.js",
+    },
+    packageName: "@openclaw/de-locale",
+    packageVersion: "2026.3.22",
+    packageDescription: "OpenClaw German locale prototype plugin",
+    packageManifest: {
+      extensions: ["./index.ts"],
+    },
+    manifest: {
+      id: "de-locale",
+      configSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {},
+      },
+      localization: {
+        locale: "de",
+        resourceKinds: ["docs", "meta"],
+        docsRoot: "./resources/docs/de",
+        docsNavPath: "./resources/docs-nav.de.json",
+        provenancePath: "./resources/provenance.json",
+        sourceManifestPath: "./resources/source-manifest.json",
+        compatibility: {
+          docsSchemaVersion: "1",
+        },
+        completeness: {
+          docsCoverage: "partial",
+        },
+      },
+      name: "German Locale Prototype",
+      description: "Prototype German locale plugin for docs materialization.",
+    },
+  },
+  {
     dirName: "diagnostics-otel",
     idHint: "diagnostics-otel",
     source: {

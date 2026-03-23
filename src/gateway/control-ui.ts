@@ -9,11 +9,15 @@ import {
 } from "../infra/control-ui-assets.js";
 import { isWithinDir } from "../infra/path-safety.js";
 import { openVerifiedFileSync } from "../infra/safe-open-sync.js";
+import type { PluginCandidate } from "../plugins/discovery.js";
+import { loadPluginManifestRegistry } from "../plugins/manifest-registry.js";
+import { isPathInside, safeRealpathSync } from "../plugins/path-safety.js";
 import { AVATAR_MAX_BYTES } from "../shared/avatar-policy.js";
 import { resolveRuntimeServiceVersion } from "../version.js";
 import { DEFAULT_ASSISTANT_IDENTITY, resolveAssistantIdentity } from "./assistant-identity.js";
 import {
   CONTROL_UI_BOOTSTRAP_CONFIG_PATH,
+  CONTROL_UI_LOCALE_PREFIX,
   type ControlUiBootstrapConfig,
 } from "./control-ui-contract.js";
 import { buildControlUiCspHeader } from "./control-ui-csp.js";
@@ -39,6 +43,7 @@ export type ControlUiRequestOptions = {
   config?: OpenClawConfig;
   agentId?: string;
   root?: ControlUiRootState;
+  pluginCandidates?: PluginCandidate[];
 };
 
 export type ControlUiRootState =
@@ -110,6 +115,14 @@ type ControlUiAvatarMeta = {
   avatarUrl: string | null;
 };
 
+type ControlUiLocaleResource = {
+  pluginId: string;
+  locale: string;
+  rootRealPath: string;
+  filePath: string;
+  rejectHardlinks: boolean;
+};
+
 function applyControlUiSecurityHeaders(res: ServerResponse) {
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Content-Security-Policy", buildControlUiCspHeader());
@@ -122,6 +135,88 @@ function sendJson(res: ServerResponse, status: number, body: unknown) {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Cache-Control", "no-cache");
   res.end(JSON.stringify(body));
+}
+
+function isValidControlUiPluginResourceId(value: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(value);
+}
+
+function resolveSafePluginLocaleFile(params: {
+  pluginId: string;
+  rootDir: string;
+  relativePath: string | undefined;
+}): { rootRealPath: string; filePath: string } | null {
+  const relativePath = params.relativePath?.trim();
+  if (!relativePath) {
+    return null;
+  }
+  const resolved = path.resolve(params.rootDir, relativePath);
+  if (!isPathInside(params.rootDir, resolved) || !fs.existsSync(resolved)) {
+    return null;
+  }
+  const rootRealPath = safeRealpathSync(params.rootDir);
+  const targetRealPath = safeRealpathSync(resolved);
+  if (!rootRealPath || !targetRealPath || !isPathInside(rootRealPath, targetRealPath)) {
+    return null;
+  }
+  const stat = fs.statSync(targetRealPath);
+  if (!stat.isFile()) {
+    return null;
+  }
+  return {
+    rootRealPath,
+    filePath: targetRealPath,
+  };
+}
+
+function collectControlUiLocaleResources(
+  opts?: ControlUiRequestOptions,
+): ControlUiLocaleResource[] {
+  const registry = loadPluginManifestRegistry({
+    config: opts?.config,
+    cache: false,
+    candidates: opts?.pluginCandidates,
+  });
+  const resources: ControlUiLocaleResource[] = [];
+  const seenLocales = new Set<string>();
+  for (const plugin of registry.plugins) {
+    const localization = plugin.localization;
+    if (
+      !localization?.resourceKinds.includes("control-ui") ||
+      seenLocales.has(localization.locale)
+    ) {
+      continue;
+    }
+    const resolved = resolveSafePluginLocaleFile({
+      pluginId: plugin.id,
+      rootDir: plugin.rootDir,
+      relativePath: localization.controlUiTranslationPath,
+    });
+    if (!resolved) {
+      continue;
+    }
+    resources.push({
+      pluginId: plugin.id,
+      locale: localization.locale,
+      rootRealPath: resolved.rootRealPath,
+      filePath: resolved.filePath,
+      rejectHardlinks: plugin.origin !== "bundled",
+    });
+    seenLocales.add(localization.locale);
+  }
+  return resources;
+}
+
+function findControlUiLocaleResourceByPluginId(
+  pluginId: string,
+  opts?: ControlUiRequestOptions,
+): ControlUiLocaleResource | null {
+  for (const resource of collectControlUiLocaleResources(opts)) {
+    if (resource.pluginId === pluginId) {
+      return resource;
+    }
+  }
+  return null;
 }
 
 function respondControlUiAssetsUnavailable(
@@ -332,6 +427,40 @@ export function handleControlUiHttpRequest(
 
   applyControlUiSecurityHeaders(res);
 
+  const localePrefix = basePath
+    ? `${basePath}${CONTROL_UI_LOCALE_PREFIX}`
+    : CONTROL_UI_LOCALE_PREFIX;
+  if (pathname.startsWith(`${localePrefix}/`)) {
+    const requestedId = pathname.slice(localePrefix.length + 1).replace(/\.json$/u, "");
+    if (!isValidControlUiPluginResourceId(requestedId)) {
+      respondControlUiNotFound(res);
+      return true;
+    }
+    const localeResource = findControlUiLocaleResourceByPluginId(requestedId, opts);
+    if (!localeResource) {
+      respondControlUiNotFound(res);
+      return true;
+    }
+    const safeLocaleFile = resolveSafeControlUiFile(
+      localeResource.rootRealPath,
+      localeResource.filePath,
+      localeResource.rejectHardlinks,
+    );
+    if (!safeLocaleFile) {
+      respondControlUiNotFound(res);
+      return true;
+    }
+    try {
+      if (respondHeadForFile(req, res, safeLocaleFile.path)) {
+        return true;
+      }
+      serveResolvedFile(res, safeLocaleFile.path, fs.readFileSync(safeLocaleFile.fd));
+      return true;
+    } finally {
+      fs.closeSync(safeLocaleFile.fd);
+    }
+  }
+
   const bootstrapConfigPath = basePath
     ? `${basePath}${CONTROL_UI_BOOTSTRAP_CONFIG_PATH}`
     : CONTROL_UI_BOOTSTRAP_CONFIG_PATH;
@@ -352,12 +481,19 @@ export function handleControlUiHttpRequest(
       res.end();
       return true;
     }
+    const locales = collectControlUiLocaleResources(opts).map((resource) => ({
+      locale: resource.locale,
+      url: basePath
+        ? `${basePath}${CONTROL_UI_LOCALE_PREFIX}/${resource.pluginId}.json`
+        : `${CONTROL_UI_LOCALE_PREFIX}/${resource.pluginId}.json`,
+    }));
     sendJson(res, 200, {
       basePath,
       assistantName: identity.name,
       assistantAvatar: avatarValue ?? identity.avatar,
       assistantAgentId: identity.agentId,
       serverVersion: resolveRuntimeServiceVersion(process.env),
+      ...(locales.length > 0 ? { locales } : {}),
     } satisfies ControlUiBootstrapConfig);
     return true;
   }

@@ -244,6 +244,64 @@ describe("loadPluginManifestRegistry", () => {
     ]);
   });
 
+  it("preserves localization metadata from plugin manifests", () => {
+    const dir = makeTempDir();
+    writeManifest(dir, {
+      id: "locale-de",
+      configSchema: { type: "object" },
+      localization: {
+        locale: "de",
+        resourceKinds: ["docs", "control-ui", "meta"],
+        docsRoot: "./resources/docs/de",
+        docsNavPath: "./resources/docs-nav.de.json",
+        controlUiTranslationPath: "./resources/control-ui/de.json",
+        provenancePath: "./resources/provenance.json",
+      },
+    });
+
+    const registry = loadSingleCandidateRegistry({
+      idHint: "locale-de",
+      rootDir: dir,
+      origin: "global",
+    });
+
+    expect(registry.plugins[0]?.localization).toEqual({
+      locale: "de",
+      resourceKinds: ["docs", "control-ui", "meta"],
+      docsRoot: "./resources/docs/de",
+      docsNavPath: "./resources/docs-nav.de.json",
+      controlUiTranslationPath: "./resources/control-ui/de.json",
+      provenancePath: "./resources/provenance.json",
+    });
+  });
+
+  it("rejects localization manifests with invalid locale ids", () => {
+    const dir = makeTempDir();
+    writeManifest(dir, {
+      id: "locale-bad",
+      configSchema: { type: "object" },
+      localization: {
+        locale: "../bad",
+        resourceKinds: ["docs"],
+        docsRoot: "./resources/docs/de",
+        docsNavPath: "./resources/docs-nav.de.json",
+      },
+    });
+
+    const registry = loadSingleCandidateRegistry({
+      idHint: "locale-bad",
+      rootDir: dir,
+      origin: "global",
+    });
+
+    expect(registry.plugins).toHaveLength(0);
+    expect(
+      registry.diagnostics.some((diag) =>
+        diag.message.includes("plugin manifest localization block is invalid"),
+      ),
+    ).toBe(true);
+  });
+
   it("skips plugins whose minHostVersion is newer than the current host", () => {
     const dir = makeTempDir();
     writeManifest(dir, { id: "synology-chat", configSchema: { type: "object" } });
