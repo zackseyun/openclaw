@@ -3,7 +3,7 @@
 # Usage: run-pipeline.sh <input_video> [--output out.mp4] [--segment START END] [--no-review] [--no-clean]
 set -euo pipefail
 
-PIPELINE_DIR="/Users/zackseyun/remotion-cartha/pipeline"
+PIPELINE_DIR="/Users/zackseyun/My Drive/Moltbot-Shared/Documents/GitHub/cartha-video-gen-pipeline/pipeline"
 GEMINI_KEY="${GEMINI_API_KEY:-$(aws secretsmanager get-secret-value --secret-id /cartha/openclaw/gemini_api_key --query SecretString --output text --region us-west-2 2>/dev/null || echo '')}"
 
 export GEMINI_API_KEY="$GEMINI_KEY"
