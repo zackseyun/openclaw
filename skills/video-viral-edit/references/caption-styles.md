@@ -2,7 +2,7 @@
 
 ## Remotion Component
 
-`/Users/zackseyun/remotion-cartha/src/CaptionOverlay.tsx`
+`/Users/zackseyun/My Drive/Moltbot-Shared/Documents/GitHub/cartha-video-gen-pipeline/src/CaptionOverlay.tsx`
 
 ## Manifest Format
 

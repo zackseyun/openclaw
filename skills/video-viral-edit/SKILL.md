@@ -32,25 +32,25 @@ Transform raw video (podcasts, talking-head, vlogs) into viral-ready captioned c
 
 ## Pipeline
 
-The pipeline lives at `/Users/zackseyun/remotion-cartha/pipeline/pipeline.py` and the Remotion project at `/Users/zackseyun/remotion-cartha/`.
+The pipeline lives at `/Users/zackseyun/My Drive/Moltbot-Shared/Documents/GitHub/cartha-video-gen-pipeline/pipeline/pipeline.py` and the Remotion project at `/Users/zackseyun/My Drive/Moltbot-Shared/Documents/GitHub/cartha-video-gen-pipeline/`.
 
 ### Quick Start
 
 ```bash
 # Full pipeline — transcribe, caption, remove dead air, AI review
-python3 /Users/zackseyun/remotion-cartha/pipeline/pipeline.py INPUT_VIDEO.mov \
+python3 /Users/zackseyun/My Drive/Moltbot-Shared/Documents/GitHub/cartha-video-gen-pipeline/pipeline/pipeline.py INPUT_VIDEO.mov \
   --output output.mp4 \
   --gemini-key "$(aws secretsmanager get-secret-value --secret-id /cartha/openclaw/gemini_api_key --query SecretString --output text --region us-west-2)"
 
 # Process only a segment (e.g., 3:27 to 5:18)
-python3 /Users/zackseyun/remotion-cartha/pipeline/pipeline.py INPUT_VIDEO.mov \
+python3 /Users/zackseyun/My Drive/Moltbot-Shared/Documents/GitHub/cartha-video-gen-pipeline/pipeline/pipeline.py INPUT_VIDEO.mov \
   --segment 207 318 --output clip.mp4
 
 # Skip AI review (faster, no Gemini calls)
-python3 /Users/zackseyun/remotion-cartha/pipeline/pipeline.py INPUT_VIDEO.mov --no-review
+python3 /Users/zackseyun/My Drive/Moltbot-Shared/Documents/GitHub/cartha-video-gen-pipeline/pipeline/pipeline.py INPUT_VIDEO.mov --no-review
 
 # Skip dead air removal
-python3 /Users/zackseyun/remotion-cartha/pipeline/pipeline.py INPUT_VIDEO.mov --no-clean
+python3 /Users/zackseyun/My Drive/Moltbot-Shared/Documents/GitHub/cartha-video-gen-pipeline/pipeline/pipeline.py INPUT_VIDEO.mov --no-clean
 ```
 
 ### Pipeline Stages
@@ -103,7 +103,7 @@ aws secretsmanager get-secret-value \
 
 ### Remotion Project
 
-- **Location:** `/Users/zackseyun/remotion-cartha/`
+- **Location:** `/Users/zackseyun/My Drive/Moltbot-Shared/Documents/GitHub/cartha-video-gen-pipeline/`
 - **Composition:** `PartTimeJobs` reads from `public/cuts/manifest.json`
 - **Component:** `src/CaptionOverlay.tsx` — Poppins font, word-by-word highlight, spring animations
 - **Studio:** `npm run dev` at http://localhost:3123
