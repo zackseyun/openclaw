@@ -31,21 +31,21 @@
 
 ## Style Types
 
-| Style | Font Size | Font Weight | Use |
-|-------|-----------|-------------|-----|
-| `hook` | 66px | 900 (Black) | First 1-2 captions |
-| `emphasis` | 60px | 700 (Bold) | Key moments |
-| `normal` | 54px | 700 (Bold) | Default |
+| Style      | Font Size | Font Weight | Use                |
+| ---------- | --------- | ----------- | ------------------ |
+| `hook`     | 66px      | 900 (Black) | First 1-2 captions |
+| `emphasis` | 60px      | 700 (Bold)  | Key moments        |
+| `normal`   | 54px      | 700 (Bold)  | Default            |
 
 ## Visual States
 
-| State | Color | Background | Scale | Shadow |
-|-------|-------|------------|-------|--------|
-| Active word | #FFFFFF | none | 1.05× spring | White glow + dark |
-| Active keyword | #1a1a1a | #FFD700 pill | 1.08× spring | none |
-| Past word | #FFFFFF | none | 1× | Dark shadow |
-| Past keyword | #FFD700 | none | 1× | Dark shadow |
-| Future word | rgba(255,255,255,0.35) | none | 1× | Subtle dark |
+| State          | Color                  | Background   | Scale        | Shadow            |
+| -------------- | ---------------------- | ------------ | ------------ | ----------------- |
+| Active word    | #FFFFFF                | none         | 1.05× spring | White glow + dark |
+| Active keyword | #1a1a1a                | #FFD700 pill | 1.08× spring | none              |
+| Past word      | #FFFFFF                | none         | 1×           | Dark shadow       |
+| Past keyword   | #FFD700                | none         | 1×           | Dark shadow       |
+| Future word    | rgba(255,255,255,0.35) | none         | 1×           | Subtle dark       |
 
 ## Timing Corrections
 

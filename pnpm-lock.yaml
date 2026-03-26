@@ -263,6 +263,8 @@ importers:
 
   extensions/byteplus: {}
 
+  extensions/cartha-router: {}
+
   extensions/chutes: {}
 
   extensions/cloudflare-ai-gateway: {}

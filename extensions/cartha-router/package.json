@@ -1,0 +1,12 @@
+{
+  "name": "@openclaw/cartha-router-plugin",
+  "version": "2026.3.26",
+  "private": true,
+  "description": "Smart multi-model router for Cartha — routes to the best model per task type",
+  "type": "module",
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

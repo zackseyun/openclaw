@@ -1,0 +1,27 @@
+{
+  "id": "cartha-router",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "logRouting": {
+        "type": "boolean",
+        "default": true
+      }
+    }
+  },
+  "uiHints": {
+    "enabled": {
+      "label": "Enable Smart Router",
+      "help": "When enabled, automatically routes prompts to the best model for the task."
+    },
+    "logRouting": {
+      "label": "Log Routing Decisions",
+      "help": "Log each routing decision to the console."
+    }
+  }
+}

@@ -339,6 +339,48 @@ export const GENERATED_BUNDLED_PLUGIN_METADATA = [
     },
   },
   {
+    dirName: "cartha-router",
+    idHint: "cartha-router-plugin",
+    source: {
+      source: "./index.ts",
+      built: "index.js",
+    },
+    packageName: "@openclaw/cartha-router-plugin",
+    packageVersion: "2026.3.26",
+    packageDescription:
+      "Smart multi-model router for Cartha — routes to the best model per task type",
+    packageManifest: {
+      extensions: ["./index.ts"],
+    },
+    manifest: {
+      id: "cartha-router",
+      configSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          enabled: {
+            type: "boolean",
+            default: true,
+          },
+          logRouting: {
+            type: "boolean",
+            default: true,
+          },
+        },
+      },
+      uiHints: {
+        enabled: {
+          label: "Enable Smart Router",
+          help: "When enabled, automatically routes prompts to the best model for the task.",
+        },
+        logRouting: {
+          label: "Log Routing Decisions",
+          help: "Log each routing decision to the console.",
+        },
+      },
+    },
+  },
+  {
     dirName: "chutes",
     idHint: "chutes",
     source: {
