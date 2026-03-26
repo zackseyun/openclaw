@@ -3,26 +3,28 @@ name: video-viral-edit
 description: Edit video clips for viral social media. Transcribe, add captions, remove dead air, and auto-review quality using AI. Use when asked to edit a video, add captions, make a clip viral-ready, or process podcast clips.
 metadata:
   {
-    "openclaw": {
-      "emoji": "🎬",
-      "requires": { "bins": ["ffmpeg", "ffprobe", "whisper-cli", "npx"] },
-      "install": [
-        {
-          "id": "brew-ffmpeg",
-          "kind": "brew",
-          "formula": "ffmpeg",
-          "bins": ["ffmpeg", "ffprobe"],
-          "label": "Install ffmpeg (brew)"
-        },
-        {
-          "id": "brew-whisper",
-          "kind": "brew",
-          "formula": "whisper-cpp",
-          "bins": ["whisper-cli"],
-          "label": "Install whisper-cpp (brew)"
-        }
-      ]
-    }
+    "openclaw":
+      {
+        "emoji": "🎬",
+        "requires": { "bins": ["ffmpeg", "ffprobe", "whisper-cli", "npx"] },
+        "install":
+          [
+            {
+              "id": "brew-ffmpeg",
+              "kind": "brew",
+              "formula": "ffmpeg",
+              "bins": ["ffmpeg", "ffprobe"],
+              "label": "Install ffmpeg (brew)",
+            },
+            {
+              "id": "brew-whisper",
+              "kind": "brew",
+              "formula": "whisper-cpp",
+              "bins": ["whisper-cli"],
+              "label": "Install whisper-cpp (brew)",
+            },
+          ],
+      },
   }
 ---
 
@@ -84,6 +86,7 @@ npx remotion render PartTimeJobs output.mp4
 ### Gemini Video Review
 
 The pipeline uses Gemini 2.5 Flash to watch rendered output and score:
+
 - Caption sync accuracy (1-10)
 - Silence handling (1-10)
 - Word highlight accuracy (1-10)
@@ -128,6 +131,7 @@ aws secretsmanager get-secret-value \
 ### Viral Heuristics
 
 When selecting segments from longer content, prioritize:
+
 1. **Hot takes / controversial opinions** — "I'm against part-time jobs"
 2. **Surprising facts** — "White potatoes are #1 on the satiety index"
 3. **Celebrity encounters** — "Simon Sinek was right there"

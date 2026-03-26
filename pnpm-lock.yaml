@@ -473,6 +473,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
 
+  extensions/cartha-router: {}
+
   extensions/cerebras:
     devDependencies:
       '@openclaw/plugin-sdk':

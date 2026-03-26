@@ -3,6 +3,7 @@
 ## Segment Selection (from long-form content)
 
 Prioritize clips that contain:
+
 1. **Hot takes / controversial opinions** — "I'm against part-time jobs"
 2. **Surprising facts** — "White potatoes are #1 on the satiety index"
 3. **Celebrity encounters** — "Simon Sinek was right there"
@@ -32,6 +33,7 @@ Prioritize clips that contain:
 ## Quality Thresholds (Gemini Review)
 
 All scores must be >= 8/10:
+
 - Caption sync accuracy
 - Silence handling
 - Word highlight accuracy
