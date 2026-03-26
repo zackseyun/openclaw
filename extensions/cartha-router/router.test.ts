@@ -180,7 +180,39 @@ describe("classify — rule priority order", () => {
     expect(d.role).not.toBe("thinker"); // Too short (<100 tokens)
   });
 
-  // ── Rule 7: Speed chat → Kimi K2.5 ──
+  // ── Rule 7: Data processing → Step 3.5 Flash (worker) ──
+
+  it("routes /worker prefix to Worker", () => {
+    const d = classify("/worker process all the CSV files");
+    expect(d.role).toBe("worker");
+    expect(d.reason).toBe("manual:/worker");
+  });
+
+  it("routes data processing tasks to Worker", () => {
+    const d = classify("parse and normalize all the user records from the JSON dump");
+    expect(d.role).toBe("worker");
+    expect(d.reason).toBe("data-processing");
+  });
+
+  it("routes batch/bulk operations to Worker", () => {
+    const d = classify("batch deduplicate and clean the email list");
+    expect(d.role).toBe("worker");
+    expect(d.reason).toBe("data-processing");
+  });
+
+  it("routes CSV/JSON transformation to Worker", () => {
+    const d = classify("convert all CSV files to JSON and merge them together");
+    expect(d.role).toBe("worker");
+    expect(d.reason).toBe("data-processing");
+  });
+
+  it("routes ETL pipeline tasks to Worker", () => {
+    const d = classify("run the ETL pipeline to ingest the new dataset");
+    expect(d.role).toBe("worker");
+    expect(d.reason).toBe("data-processing");
+  });
+
+  // ── Rule 8: Speed chat → Kimi K2.5 ──
 
   it("routes short conversational prompt to Scout", () => {
     const d = classify("hey what's up?");
@@ -194,7 +226,7 @@ describe("classify — rule priority order", () => {
     expect(d.reason).toBe("speed-chat");
   });
 
-  // ── Rule 8: Default → MiMo ──
+  // ── Rule 9: Default → MiMo ──
 
   it("routes generic prompts to Operator (default)", () => {
     const d = classify("tell me about the matchmaking algorithm we use");
@@ -265,6 +297,15 @@ describe("model kill switches", () => {
     const d = classify("write a new sorting function in sort.ts");
     // Builder disabled → falls back to operator (first in builder's fallback chain)
     expect(d.role).not.toBe("builder");
+    expect(d.reason).toContain("fallback");
+  });
+
+  it("worker falls back to thinker (cheapest paid)", () => {
+    resetRouter({
+      modelEnabled: { ...DEFAULT_CONFIG.modelEnabled, worker: false },
+    });
+    const d = classify("batch process and normalize all the CSV records");
+    expect(d.role).toBe("thinker");
     expect(d.reason).toContain("fallback");
   });
 

@@ -59,6 +59,15 @@ export const MODELS = {
     multimodal: true,
     video: true,
   },
+  worker: {
+    id: "openrouter/stepfun/step-3.5-flash:free",
+    name: "Step 3.5 Flash",
+    alias: "worker",
+    provider: "openrouter",
+    contextWindow: 256_000,
+    multimodal: false,
+    video: false,
+  },
 } as const;
 
 export type ModelRole = keyof typeof MODELS;
@@ -76,6 +85,8 @@ export const FALLBACK_CHAINS: Record<ModelRole, ModelRole[]> = {
   thinker: ["operator", "builder", "scout"],
   // Video/vision: ONLY multimodal fallbacks first, then large-context
   vision: ["scout", "operator", "builder"],
+  // Worker: free tier, fall to thinker (cheapest paid), then operator
+  worker: ["thinker", "operator", "builder"],
 };
 
 // ─── Configuration ──────────────────────────────────────────────────────────
@@ -105,6 +116,7 @@ export interface RouterConfig {
     heavyCodeGen: boolean;
     deepReasoning: boolean;
     speedChat: boolean;
+    dataProcessing: boolean;
   };
 }
 
@@ -121,6 +133,7 @@ export const DEFAULT_CONFIG: RouterConfig = {
     scout: true,
     thinker: true,
     vision: true,
+    worker: true,
   },
   rules: {
     manualOverride: true,
@@ -131,6 +144,7 @@ export const DEFAULT_CONFIG: RouterConfig = {
     heavyCodeGen: true,
     deepReasoning: true,
     speedChat: true,
+    dataProcessing: true,
   },
 };
 
@@ -196,6 +210,10 @@ const FILE_EXT_PATTERN =
 const DEEP_REASONING_PATTERNS =
   /\b(analyze|compare|contrast|extract|summarize|break down|evaluate|assess|review|audit|deep dive|root cause|investigate|explain why|reasoning|trade-?offs?)\b/i;
 
+// Data processing: batch ops, formatting, transformation, extraction, conversion
+const DATA_PROCESSING_PATTERNS =
+  /\b(process|transform|convert|format|parse|clean|normalize|batch|bulk|csv|json|xml|yaml|toml|merge|split|map|filter|flatten|reshape|aggregate|deduplicate|sanitize|validate data|etl|pipeline|ingest)\b/i;
+
 // Conversational tone indicators (for speed routing)
 const CONVERSATIONAL_PATTERNS =
   /^(hey|hi|hello|thanks|ok|sure|yes|no|what|how|why|when|where|who|can you|could you|please|yo|sup)\b/i;
@@ -208,6 +226,7 @@ const MANUAL_PREFIXES: Record<string, ModelRole> = {
   "/scout": "scout",
   "/operator": "operator",
   "/vision": "vision",
+  "/worker": "worker",
 };
 
 interface ManualOverride {
@@ -293,8 +312,9 @@ function makeDecision(
  *   4. Web research → Kimi K2.5 (fastest, web-native)
  *   5. Heavy code generation → MiniMax M2.7 (best coder)
  *   6. Deep reasoning/analysis → DeepSeek V3.2 (reasoning specialist)
- *   7. Speed-sensitive short chat → Kimi K2.5 (103+ tps)
- *   8. Default → MiMo-V2-Pro
+ *   7. Data processing/batch → Step 3.5 Flash (free worker)
+ *   8. Speed-sensitive short chat → Kimi K2.5 (103+ tps)
+ *   9. Default → MiMo-V2-Pro
  */
 export function classify(prompt: string): RoutingDecision {
   const tokens = estimateTokens(prompt);
@@ -351,7 +371,12 @@ export function classify(prompt: string): RoutingDecision {
     return makeDecision("thinker", "deep-reasoning", prompt, tokens);
   }
 
-  // ── Rule 7: Speed-sensitive short chat → Kimi K2.5 ──
+  // ── Rule 7: Data processing/batch tasks → Step 3.5 Flash (free worker) ──
+  if (_config.rules.dataProcessing && DATA_PROCESSING_PATTERNS.test(prompt)) {
+    return makeDecision("worker", "data-processing", prompt, tokens);
+  }
+
+  // ── Rule 8: Speed-sensitive short chat → Kimi K2.5 ──
   if (
     _config.rules.speedChat &&
     prompt.length < _config.shortChatCharThreshold &&
@@ -360,7 +385,7 @@ export function classify(prompt: string): RoutingDecision {
     return makeDecision("scout", "speed-chat", prompt, tokens);
   }
 
-  // ── Rule 8: Default → MiMo-V2-Pro ──
+  // ── Rule 9: Default → MiMo-V2-Pro ──
   return makeDecision(_config.defaultModel, "default", prompt, tokens);
 }
 
