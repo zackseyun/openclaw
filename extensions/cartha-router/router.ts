@@ -292,7 +292,9 @@ function makeDecision(
   const resolved = resolveModel(role);
   const model = MODELS[resolved];
   return {
-    modelOverride: model.id,
+    modelOverride: model.id.startsWith(model.provider + "/")
+      ? model.id.slice(model.provider.length + 1)
+      : model.id,
     providerOverride: model.provider,
     role: resolved,
     reason: resolved !== role ? `${reason} (fallback: ${role}→${resolved})` : reason,
