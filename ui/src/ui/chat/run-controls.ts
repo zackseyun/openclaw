@@ -2,6 +2,7 @@ import { html, nothing } from "lit";
 import { icons } from "../icons.ts";
 
 export type ChatRunControlsProps = {
+  extraControlsBeforeSend?: unknown;
   canAbort: boolean;
   connected: boolean;
   draft: string;
@@ -39,6 +40,7 @@ export function renderChatRunControls(props: ChatRunControlsProps) {
       >
         ${icons.download}
       </button>
+      ${props.extraControlsBeforeSend ?? nothing}
 
       ${props.canAbort
         ? html`

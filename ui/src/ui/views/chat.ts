@@ -1298,7 +1298,17 @@ export function renderChat(props: ChatProps) {
               ${icons.paperclip}
             </button>
 
-            ${props.onToggleRealtimeTalk
+            ${tokens ? html`<span class="agent-chat__token-count">${tokens}</span>` : nothing}
+          </div>
+
+          ${renderChatRunControls({
+            canAbort,
+            connected: props.connected,
+            draft: props.draft,
+            hasMessages: props.messages.length > 0,
+            isBusy,
+            sending: props.sending,
+            extraControlsBeforeSend: props.onToggleRealtimeTalk
               ? html`
                   <button
                     class="agent-chat__input-btn ${props.realtimeTalkActive
@@ -1312,17 +1322,7 @@ export function renderChat(props: ChatProps) {
                     ${props.realtimeTalkActive ? icons.volume2 : icons.radio}
                   </button>
                 `
-              : nothing}
-            ${tokens ? html`<span class="agent-chat__token-count">${tokens}</span>` : nothing}
-          </div>
-
-          ${renderChatRunControls({
-            canAbort,
-            connected: props.connected,
-            draft: props.draft,
-            hasMessages: props.messages.length > 0,
-            isBusy,
-            sending: props.sending,
+              : nothing,
             onAbort: props.onAbort,
             onExport: () => exportMarkdown(props),
             onNewSession: props.onNewSession,
