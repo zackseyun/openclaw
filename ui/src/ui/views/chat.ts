@@ -1259,6 +1259,29 @@ export function renderChat(props: ChatProps) {
               ${icons.paperclip}
             </button>
 
+            ${tokens ? html`<span class="agent-chat__token-count">${tokens}</span>` : nothing}
+          </div>
+
+          <div class="agent-chat__toolbar-right">
+            ${nothing /* search hidden for now */}
+            ${
+              canAbort
+                ? nothing
+                : html`
+                    <button
+                      class="btn-ghost"
+                      @click=${props.onNewSession}
+                      title="New session"
+                      aria-label="New session"
+                    >
+                      ${icons.plus}
+                    </button>
+                  `
+            }
+            <button class="btn-ghost" @click=${() => exportMarkdown(props)} title="Export" ?disabled=${props.messages.length === 0}>
+              ${icons.download}
+            </button>
+
             ${
               isSttSupported()
                 ? html`
@@ -1312,29 +1335,6 @@ export function renderChat(props: ChatProps) {
                 `
                 : nothing
             }
-
-            ${tokens ? html`<span class="agent-chat__token-count">${tokens}</span>` : nothing}
-          </div>
-
-          <div class="agent-chat__toolbar-right">
-            ${nothing /* search hidden for now */}
-            ${
-              canAbort
-                ? nothing
-                : html`
-                    <button
-                      class="btn-ghost"
-                      @click=${props.onNewSession}
-                      title="New session"
-                      aria-label="New session"
-                    >
-                      ${icons.plus}
-                    </button>
-                  `
-            }
-            <button class="btn-ghost" @click=${() => exportMarkdown(props)} title="Export" ?disabled=${props.messages.length === 0}>
-              ${icons.download}
-            </button>
 
             ${
               canAbort && (isBusy || props.sending)
