@@ -136,6 +136,7 @@ function renderCronFilterIcon(hiddenCount: number) {
 export function renderChatSessionSelect(state: AppViewState) {
   const sessionGroups = resolveSessionOptionGroups(state, state.sessionKey, state.sessionsResult);
   const modelSelect = renderChatModelSelect(state);
+  const busy = state.chatLoading || !state.connected;
   return html`
     <div class="chat-controls__session-row">
       <label class="field chat-controls__session">
@@ -167,6 +168,40 @@ export function renderChatSessionSelect(state: AppViewState) {
           )}
         </select>
       </label>
+      <button
+        class="btn btn--sm btn--icon"
+        ?disabled=${busy}
+        @click=${() => void createAndSwitchSession(state)}
+        title="New session"
+        aria-label="New session"
+      >
+        ${icons.plus}
+      </button>
+      <button
+        class="btn btn--sm btn--icon"
+        ?disabled=${busy}
+        @click=${() => {
+          const currentRow = state.sessionsResult?.sessions?.find(
+            (row) => row.key === state.sessionKey,
+          );
+          const currentLabel =
+            currentRow?.label?.trim() || currentRow?.displayName?.trim() || state.sessionKey;
+          void createAndSwitchSession(state, {
+            parentSessionKey: state.sessionKey,
+            label: `Fork of ${currentLabel}`,
+          });
+        }}
+        title="Fork session"
+        aria-label="Fork session"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="18" r="3"></circle>
+          <circle cx="6" cy="6" r="3"></circle>
+          <circle cx="18" cy="6" r="3"></circle>
+          <path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"></path>
+          <path d="M12 12v3"></path>
+        </svg>
+      </button>
       ${modelSelect}
     </div>
   `;
@@ -433,6 +468,42 @@ export function renderChatMobileToggle(state: AppViewState) {
           </label>
           <div class="chat-controls__thinking">
             <button
+              class="btn btn--sm btn--icon"
+              ?disabled=${!state.connected}
+              @click=${() => void createAndSwitchSession(state)}
+              title="New session"
+              aria-label="New session"
+            >
+              ${icons.plus}
+            </button>
+            <button
+              class="btn btn--sm btn--icon"
+              ?disabled=${!state.connected}
+              @click=${() => {
+                const currentRow = state.sessionsResult?.sessions?.find(
+                  (row) => row.key === state.sessionKey,
+                );
+                const currentLabel =
+                  currentRow?.label?.trim() || currentRow?.displayName?.trim() || state.sessionKey;
+                void createAndSwitchSession(state, {
+                  parentSessionKey: state.sessionKey,
+                  label: `Fork of ${currentLabel}`,
+                });
+              }}
+              title="Fork session"
+              aria-label="Fork session"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="18" r="3"></circle>
+                <circle cx="6" cy="6" r="3"></circle>
+                <circle cx="18" cy="6" r="3"></circle>
+                <path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"></path>
+                <path d="M12 12v3"></path>
+              </svg>
+            </button>
+          </div>
+          <div class="chat-controls__thinking">
+            <button
               class="btn btn--sm btn--icon ${showThinking ? "active" : ""}"
               ?disabled=${disableThinkingToggle}
               @click=${() => {
@@ -485,6 +556,53 @@ export function renderChatMobileToggle(state: AppViewState) {
       </div>
     </div>
   `;
+}
+
+/**
+ * Centralized helper for creating a new session and switching to it.
+ * Used by both "New Session" and "Fork Session" flows.
+ */
+async function createAndSwitchSession(
+  state: AppViewState,
+  opts: { parentSessionKey?: string; label?: string } = {},
+): Promise<boolean> {
+  if (!state.client || !state.connected) {
+    return false;
+  }
+  const previousSessionKey = state.sessionKey;
+  const draft = state.chatMessage;
+  try {
+    const params: Record<string, unknown> = {};
+    if (opts.label) {
+      params.label = opts.label;
+    }
+    if (opts.parentSessionKey) {
+      params.parentSessionKey = opts.parentSessionKey;
+    }
+    const agentId = state.assistantAgentId;
+    if (agentId) {
+      params.agentId = agentId;
+    }
+    const res = await state.client.request<{ key?: string }>("sessions.create", params);
+    const newKey = res?.key;
+    if (!newKey) {
+      state.lastError = "Failed to create session: no key returned";
+      return false;
+    }
+    switchChatSession(state, newKey);
+    // Carry the draft to the new session.
+    if (draft) {
+      state.chatMessage = draft;
+    }
+    return true;
+  } catch (err) {
+    state.lastError = `Failed to create session: ${String(err)}`;
+    // Restore previous selection so the dropdown isn't left in a bad state.
+    if (state.sessionKey !== previousSessionKey) {
+      state.sessionKey = previousSessionKey;
+    }
+    return false;
+  }
 }
 
 export function switchChatSession(state: AppViewState, nextSessionKey: string) {
@@ -921,6 +1039,50 @@ export function resolveSessionOptionGroups(
 
   for (const { option } of allOptions) {
     option.label = labels.get(option) ?? option.label;
+  }
+
+  // ── Fork hierarchy: prefix child sessions with "↳" ──
+  const childKeys = new Set<string>();
+  for (const row of rows) {
+    if (row.spawnedBy && byKey.has(row.spawnedBy)) {
+      childKeys.add(row.key);
+    }
+  }
+  if (childKeys.size > 0) {
+    for (const group of groups.values()) {
+      // Sort options so children appear after their parent.
+      const ordered: SessionOptionEntry[] = [];
+      const childrenOf = new Map<string, SessionOptionEntry[]>();
+      for (const opt of group.options) {
+        const row = byKey.get(opt.key);
+        if (row?.spawnedBy && childKeys.has(opt.key)) {
+          const siblings = childrenOf.get(row.spawnedBy) ?? [];
+          siblings.push(opt);
+          childrenOf.set(row.spawnedBy, siblings);
+        }
+      }
+      for (const opt of group.options) {
+        if (!childKeys.has(opt.key)) {
+          ordered.push(opt);
+          const children = childrenOf.get(opt.key);
+          if (children) {
+            for (const child of children) {
+              child.label = `\u21B3 ${child.label}`;
+              ordered.push(child);
+            }
+            childrenOf.delete(opt.key);
+          }
+        }
+      }
+      // Append any orphaned children whose parent is in a different group.
+      for (const children of childrenOf.values()) {
+        for (const child of children) {
+          child.label = `\u21B3 ${child.label}`;
+          ordered.push(child);
+        }
+      }
+      group.options = ordered;
+    }
   }
 
   return Array.from(groups.values());
