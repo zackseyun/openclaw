@@ -250,7 +250,10 @@ function renderCronFilterIcon(hiddenCount: number) {
 }
 
 export function renderChatSessionSelect(state: AppViewState) {
-  return renderChatSessionSelectBase(state, switchChatSession);
+  return renderChatSessionSelectBase(state, switchChatSession, {
+    onNewSession: createChatSession,
+    onForkSession: forkChatSession,
+  });
 }
 
 export function renderChatControls(state: AppViewState) {
@@ -614,7 +617,10 @@ export function dismissChatError(state: AppViewState) {
   }
 }
 
-export async function createChatSession(state: AppViewState) {
+export async function createChatSession(
+  state: AppViewState,
+  opts: { parentSessionKey?: string; label?: string } = {},
+) {
   if (!state.client || !state.connected) {
     return;
   }
@@ -629,15 +635,16 @@ export async function createChatSession(state: AppViewState) {
 
   state.lastError = null;
   const previousSessionKey = state.sessionKey;
-  const parentSessionKey = state.sessionsResult?.sessions.some(
-    (row) => row.key === previousSessionKey,
-  )
-    ? previousSessionKey
-    : undefined;
+  const parentSessionKey =
+    opts.parentSessionKey ??
+    (state.sessionsResult?.sessions.some((row) => row.key === previousSessionKey)
+      ? previousSessionKey
+      : undefined);
   const nextSessionKey = await createSessionAndRefresh(
     state as unknown as Parameters<typeof createSessionAndRefresh>[0],
     {
       agentId: resolveAgentIdFromSessionKey(previousSessionKey),
+      ...(opts.label ? { label: opts.label } : {}),
       parentSessionKey,
       emitCommandHooks: parentSessionKey !== undefined ? true : undefined,
     },
@@ -669,6 +676,18 @@ export async function createChatSession(state: AppViewState) {
   switchChatSession(state, nextSessionKey);
   state.chatMessage = preservedDraft;
   state.chatAttachments = preservedAttachments;
+}
+
+export async function forkChatSession(state: AppViewState) {
+  const currentRow = state.sessionsResult?.sessions?.find((row) => row.key === state.sessionKey);
+  const currentLabel =
+    normalizeOptionalString(currentRow?.label) ??
+    normalizeOptionalString(currentRow?.displayName) ??
+    state.sessionKey;
+  await createChatSession(state, {
+    parentSessionKey: state.sessionKey,
+    label: `Fork of ${currentLabel}`,
+  });
 }
 
 async function refreshSessionOptions(state: AppViewState) {

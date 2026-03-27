@@ -1,4 +1,4 @@
-import { html } from "lit";
+import { html, nothing } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 import type { AppViewState } from "../app-view-state.ts";
 import { createChatModelOverride } from "../chat-model-ref.ts";
@@ -8,6 +8,7 @@ import {
 } from "../chat-model-select-state.ts";
 import { refreshVisibleToolsEffectiveForCurrentSession } from "../controllers/agents.ts";
 import { loadSessions } from "../controllers/sessions.ts";
+import { icons } from "../icons.ts";
 import { pushUniqueTrimmedSelectOption } from "../select-options.ts";
 import {
   buildAgentMainSessionKey,
@@ -28,10 +29,17 @@ import {
 import type { GatewayThinkingLevelOption, SessionsListResult } from "../types.ts";
 
 type ChatSessionSwitchHandler = (state: AppViewState, nextSessionKey: string) => void;
+type ChatSessionActionHandler = (state: AppViewState) => void | Promise<void>;
+
+type ChatSessionSelectActions = {
+  onNewSession?: ChatSessionActionHandler;
+  onForkSession?: ChatSessionActionHandler;
+};
 
 export function renderChatSessionSelect(
   state: AppViewState,
   onSwitchSession: ChatSessionSwitchHandler = () => undefined,
+  actions: ChatSessionSelectActions = {},
 ) {
   const sessionGroups = resolveSessionOptionGroups(state, state.sessionKey, state.sessionsResult);
   const agentOptions = resolveChatAgentFilterOptions(state);
@@ -39,6 +47,12 @@ export function renderChatSessionSelect(
   const agentSelect = renderChatAgentSelect(state, onSwitchSession, agentOptions);
   const modelSelect = renderChatModelSelect(state);
   const thinkingSelect = renderChatThinkingSelect(state);
+  const sessionActionBusy =
+    state.chatLoading ||
+    state.chatSending ||
+    Boolean(state.chatRunId) ||
+    state.chatStream !== null ||
+    !state.connected;
   const selectedSessionLabel =
     sessionGroups.flatMap((group) => group.options).find((entry) => entry.key === state.sessionKey)
       ?.label ?? state.sessionKey;
@@ -89,6 +103,48 @@ export function renderChatSessionSelect(
           )}
         </select>
       </label>
+      ${actions.onNewSession
+        ? html`
+            <button
+              class="btn btn--sm btn--icon"
+              ?disabled=${sessionActionBusy}
+              @click=${() => void actions.onNewSession?.(state)}
+              title="New session"
+              aria-label="New session"
+            >
+              ${icons.plus}
+            </button>
+          `
+        : nothing}
+      ${actions.onForkSession
+        ? html`
+            <button
+              class="btn btn--sm btn--icon"
+              ?disabled=${sessionActionBusy}
+              @click=${() => void actions.onForkSession?.(state)}
+              title="Fork session"
+              aria-label="Fork session"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="18" r="3"></circle>
+                <circle cx="6" cy="6" r="3"></circle>
+                <circle cx="18" cy="6" r="3"></circle>
+                <path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"></path>
+                <path d="M12 12v3"></path>
+              </svg>
+            </button>
+          `
+        : nothing}
       ${modelSelect} ${thinkingSelect}
     </div>
     <div class="chat-controls__session-notice" role="status" aria-live="polite">
@@ -783,6 +839,48 @@ export function resolveSessionOptionGroups(
 
   for (const { option } of allOptions) {
     option.label = labels.get(option) ?? option.label;
+  }
+
+  const childKeys = new Set<string>();
+  for (const row of rows) {
+    if (row.spawnedBy && byKey.has(row.spawnedBy)) {
+      childKeys.add(row.key);
+    }
+  }
+  if (childKeys.size > 0) {
+    for (const group of groups.values()) {
+      const ordered: SessionOptionEntry[] = [];
+      const childrenOf = new Map<string, SessionOptionEntry[]>();
+      for (const option of group.options) {
+        const row = byKey.get(option.key);
+        if (row?.spawnedBy && childKeys.has(option.key)) {
+          const siblings = childrenOf.get(row.spawnedBy) ?? [];
+          siblings.push(option);
+          childrenOf.set(row.spawnedBy, siblings);
+        }
+      }
+      for (const option of group.options) {
+        if (childKeys.has(option.key)) {
+          continue;
+        }
+        ordered.push(option);
+        const children = childrenOf.get(option.key);
+        if (children) {
+          for (const child of children) {
+            child.label = `↳ ${child.label}`;
+            ordered.push(child);
+          }
+          childrenOf.delete(option.key);
+        }
+      }
+      for (const children of childrenOf.values()) {
+        for (const child of children) {
+          child.label = `↳ ${child.label}`;
+          ordered.push(child);
+        }
+      }
+      group.options = ordered;
+    }
   }
 
   return Array.from(groups.values());
