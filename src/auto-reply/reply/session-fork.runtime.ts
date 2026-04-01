@@ -25,6 +25,9 @@ export function forkSessionFromParentRuntime(params: {
       const sessionFile = manager.createBranchedSession(leafId) ?? manager.getSessionFile();
       const sessionId = manager.getSessionId();
       if (sessionFile && sessionId) {
+        if (!fs.existsSync(sessionFile)) {
+          (manager as unknown as { _rewriteFile?: () => void })._rewriteFile?.();
+        }
         return { sessionId, sessionFile };
       }
     }

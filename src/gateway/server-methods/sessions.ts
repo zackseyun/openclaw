@@ -9,6 +9,7 @@ import {
   waitForEmbeddedPiRunEnd,
 } from "../../agents/pi-embedded-runner/runs.js";
 import { clearSessionQueues } from "../../auto-reply/reply/queue/cleanup.js";
+import { forkSessionFromParent } from "../../auto-reply/reply/session-fork.js";
 import { loadConfig } from "../../config/config.js";
 import {
   loadSessionStore,
@@ -656,6 +657,7 @@ export const sessionsHandlers: GatewayRequestHandlers = {
         ? p.parentSessionKey.trim()
         : undefined;
     let canonicalParentSessionKey: string | undefined;
+    let parentEntry: SessionEntry | undefined;
     if (parentSessionKey) {
       const parent = loadSessionEntry(parentSessionKey);
       if (!parent.entry?.sessionId) {
@@ -667,6 +669,7 @@ export const sessionsHandlers: GatewayRequestHandlers = {
         return;
       }
       canonicalParentSessionKey = parent.canonicalKey;
+      parentEntry = parent.entry;
     }
     const key = requestedKey ?? buildDashboardSessionKey(agentId);
     const target = resolveGatewaySessionStoreTarget({ cfg, key });
@@ -683,13 +686,27 @@ export const sessionsHandlers: GatewayRequestHandlers = {
         },
         loadGatewayModelCatalog: context.loadGatewayModelCatalog,
       });
-      if (!patched.ok || !canonicalParentSessionKey) {
+      if (!patched.ok) {
         return patched;
       }
       const nextEntry: SessionEntry = {
         ...patched.entry,
-        parentSessionKey: canonicalParentSessionKey,
       };
+      if (canonicalParentSessionKey) {
+        nextEntry.parentSessionKey = canonicalParentSessionKey;
+      }
+      if (parentEntry && nextEntry.forkedFromParent !== true) {
+        const forked = await forkSessionFromParent({
+          parentEntry,
+          agentId: targetAgentId,
+          sessionsDir: path.dirname(target.storePath),
+        });
+        if (forked) {
+          nextEntry.sessionId = forked.sessionId;
+          nextEntry.sessionFile = forked.sessionFile;
+          nextEntry.forkedFromParent = true;
+        }
+      }
       store[target.canonicalKey] = nextEntry;
       return {
         ...patched,

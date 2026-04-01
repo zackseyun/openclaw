@@ -316,6 +316,71 @@ describe("gateway server sessions", () => {
     ws.close();
   });
 
+  test("sessions.create forks dashboard transcript contents from parent sessions", async () => {
+    const { dir, storePath } = await createSessionStoreDir();
+    await fs.writeFile(
+      path.join(dir, "sess-parent.jsonl"),
+      [
+        JSON.stringify({ type: "session", version: 1, id: "sess-parent" }),
+        JSON.stringify({
+          id: "msg-parent-1",
+          message: {
+            role: "user",
+            text: "Parent breadcrumb for dashboard fork",
+            timestamp: Date.now(),
+          },
+        }),
+      ].join("\n"),
+      "utf-8",
+    );
+    await writeSessionStore({
+      entries: {
+        main: {
+          sessionId: "sess-parent",
+          updatedAt: Date.now(),
+        },
+      },
+    });
+
+    const { ws } = await openClient();
+    const created = await rpcReq<{
+      key?: string;
+      sessionId?: string;
+      entry?: {
+        parentSessionKey?: string;
+        forkedFromParent?: boolean;
+        sessionFile?: string;
+      };
+    }>(ws, "sessions.create", {
+      agentId: "ops",
+      label: "Forked Dashboard Chat",
+      parentSessionKey: "main",
+    });
+
+    expect(created.ok).toBe(true);
+    const key = created.payload?.key as string;
+    const rawStore = JSON.parse(await fs.readFile(storePath, "utf-8")) as Record<
+      string,
+      {
+        sessionId?: string;
+        parentSessionKey?: string;
+        forkedFromParent?: boolean;
+        sessionFile?: string;
+      }
+    >;
+    const child = rawStore[key];
+    expect(child?.parentSessionKey).toBe("agent:main:main");
+    expect(child?.forkedFromParent).toBe(true);
+    expect(child?.sessionId).toBeTruthy();
+    expect(child?.sessionId).not.toBe("sess-parent");
+
+    const transcriptPath = child?.sessionFile ?? path.join(dir, `${child?.sessionId}.jsonl`);
+    const transcript = await fs.readFile(transcriptPath, "utf-8");
+    expect(transcript).toContain("Parent breadcrumb for dashboard fork");
+
+    ws.close();
+  });
+
   test("sessions.create accepts an explicit key for persistent dashboard sessions", async () => {
     await createSessionStoreDir();
     const { ws } = await openClient();
