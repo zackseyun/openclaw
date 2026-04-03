@@ -28,6 +28,12 @@ type FileBlock = {
   mimeType?: string;
 };
 
+function basenameFromPathLike(value: string): string {
+  const normalized = value.replace(/[?#].*$/, "");
+  const parts = normalized.split(/[\\/]/).filter(Boolean);
+  return parts.at(-1) ?? value;
+}
+
 function extractImages(message: unknown): ImageBlock[] {
   const m = message as Record<string, unknown>;
   const content = m.content;
@@ -87,6 +93,32 @@ function extractFiles(message: unknown): FileBlock[] {
       mimeType: typeof b.mimeType === "string" ? b.mimeType : undefined,
     });
   }
+
+  if (files.length > 0) {
+    return files;
+  }
+
+  const mediaPaths = Array.isArray(m.MediaPaths)
+    ? m.MediaPaths.filter((value): value is string => typeof value === "string")
+    : typeof m.MediaPath === "string"
+      ? [m.MediaPath]
+      : [];
+  const mediaTypes = Array.isArray(m.MediaTypes)
+    ? m.MediaTypes.filter((value): value is string => typeof value === "string")
+    : typeof m.MediaType === "string"
+      ? [m.MediaType]
+      : [];
+
+  mediaPaths.forEach((mediaPath, index) => {
+    const mimeType = mediaTypes[index] ?? mediaTypes[0];
+    if (mimeType?.startsWith("image/")) {
+      return;
+    }
+    files.push({
+      fileName: basenameFromPathLike(mediaPath),
+      mimeType,
+    });
+  });
 
   return files;
 }
