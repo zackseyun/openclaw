@@ -25,6 +25,7 @@ type AttachmentLog = {
 
 type NormalizedAttachment = {
   label: string;
+  fileName?: string;
   mime: string;
   base64: string;
 };
@@ -70,7 +71,7 @@ function normalizeAttachment(
       base64 = dataUrlMatch[1];
     }
   }
-  return { label, mime, base64 };
+  return { label, fileName: att.fileName, mime, base64 };
 }
 
 function validateAttachmentBase64OrThrow(
@@ -142,6 +143,35 @@ export async function parseMessageWithAttachments(
   }
 
   return { message, images };
+}
+
+export function normalizeChatAttachmentsForPersistence(
+  attachments: ChatAttachment[] | undefined,
+  opts?: { maxBytes?: number },
+): Array<{ label: string; fileName?: string; mimeType?: string; base64: string }> {
+  const maxBytes = opts?.maxBytes ?? 5_000_000;
+  if (!attachments || attachments.length === 0) {
+    return [];
+  }
+
+  return attachments.flatMap((att, idx) => {
+    if (!att) {
+      return [];
+    }
+    const normalized = normalizeAttachment(att, idx, {
+      stripDataUrlPrefix: true,
+      requireImageMime: false,
+    });
+    validateAttachmentBase64OrThrow(normalized, { maxBytes });
+    return [
+      {
+        label: normalized.label,
+        fileName: normalized.fileName,
+        mimeType: normalizeMime(normalized.mime),
+        base64: normalized.base64,
+      },
+    ];
+  });
 }
 
 /**

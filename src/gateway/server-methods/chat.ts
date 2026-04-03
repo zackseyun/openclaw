@@ -35,7 +35,11 @@ import {
   isChatStopCommandText,
   resolveChatRunExpiresAtMs,
 } from "../chat-abort.js";
-import { type ChatImageContent, parseMessageWithAttachments } from "../chat-attachments.js";
+import {
+  normalizeChatAttachmentsForPersistence,
+  type ChatImageContent,
+  parseMessageWithAttachments,
+} from "../chat-attachments.js";
 import { stripEnvelopeFromMessage, stripEnvelopeFromMessages } from "../chat-sanitize.js";
 import { ADMIN_SCOPE } from "../method-scopes.js";
 import {
@@ -289,21 +293,33 @@ function isAcpBridgeClient(client: GatewayRequestHandlerOptions["client"]): bool
   );
 }
 
-async function persistChatSendImages(params: {
-  images: ChatImageContent[];
+function isImageSavedMedia(entry: SavedMedia): boolean {
+  return Boolean(entry.contentType?.startsWith("image/"));
+}
+
+async function persistChatSendAttachments(params: {
+  attachments: ReturnType<typeof normalizeChatAttachmentsForPersistence>;
   client: GatewayRequestHandlerOptions["client"];
   logGateway: GatewayRequestContext["logGateway"];
 }): Promise<SavedMedia[]> {
-  if (params.images.length === 0 || isAcpBridgeClient(params.client)) {
+  if (params.attachments.length === 0 || isAcpBridgeClient(params.client)) {
     return [];
   }
   const saved: SavedMedia[] = [];
-  for (const img of params.images) {
+  for (const attachment of params.attachments) {
     try {
-      saved.push(await saveMediaBuffer(Buffer.from(img.data, "base64"), img.mimeType, "inbound"));
+      saved.push(
+        await saveMediaBuffer(
+          Buffer.from(attachment.base64, "base64"),
+          attachment.mimeType,
+          "inbound",
+          undefined,
+          attachment.fileName,
+        ),
+      );
     } catch (err) {
       params.logGateway.warn(
-        `chat.send: failed to persist inbound image (${img.mimeType}): ${formatForLog(err)}`,
+        `chat.send: failed to persist inbound attachment (${attachment.fileName ?? attachment.label}${attachment.mimeType ? `, ${attachment.mimeType}` : ""}): ${formatForLog(err)}`,
       );
     }
   }
@@ -312,10 +328,10 @@ async function persistChatSendImages(params: {
 
 function buildChatSendTranscriptMessage(params: {
   message: string;
-  savedImages: SavedMedia[];
+  savedAttachments: SavedMedia[];
   timestamp: number;
 }) {
-  const mediaFields = resolveChatSendTranscriptMediaFields(params.savedImages);
+  const mediaFields = resolveChatSendTranscriptMediaFields(params.savedAttachments);
   return {
     role: "user" as const,
     content: params.message,
@@ -324,12 +340,14 @@ function buildChatSendTranscriptMessage(params: {
   };
 }
 
-function resolveChatSendTranscriptMediaFields(savedImages: SavedMedia[]) {
-  const mediaPaths = savedImages.map((entry) => entry.path);
+function resolveChatSendTranscriptMediaFields(savedAttachments: SavedMedia[]) {
+  const mediaPaths = savedAttachments.map((entry) => entry.path);
   if (mediaPaths.length === 0) {
     return {};
   }
-  const mediaTypes = savedImages.map((entry) => entry.contentType ?? "application/octet-stream");
+  const mediaTypes = savedAttachments.map(
+    (entry) => entry.contentType ?? "application/octet-stream",
+  );
   return {
     MediaPath: mediaPaths[0],
     MediaPaths: mediaPaths,
@@ -357,9 +375,9 @@ async function rewriteChatSendUserTurnMediaPaths(params: {
   transcriptPath: string;
   sessionKey: string;
   message: string;
-  savedImages: SavedMedia[];
+  savedAttachments: SavedMedia[];
 }) {
-  const mediaFields = resolveChatSendTranscriptMediaFields(params.savedImages);
+  const mediaFields = resolveChatSendTranscriptMediaFields(params.savedAttachments);
   if (!("MediaPath" in mediaFields)) {
     return;
   }
@@ -1291,8 +1309,12 @@ export const chatHandlers: GatewayRequestHandlers = {
     }
     let parsedMessage = inboundMessage;
     let parsedImages: ChatImageContent[] = [];
+    let persistentAttachments: ReturnType<typeof normalizeChatAttachmentsForPersistence> = [];
     if (normalizedAttachments.length > 0) {
       try {
+        persistentAttachments = normalizeChatAttachmentsForPersistence(normalizedAttachments, {
+          maxBytes: 5_000_000,
+        });
         const parsed = await parseMessageWithAttachments(inboundMessage, normalizedAttachments, {
           maxBytes: 5_000_000,
           log: context.logGateway,
@@ -1379,11 +1401,14 @@ export const chatHandlers: GatewayRequestHandlers = {
         status: "started" as const,
       };
       respond(true, ackPayload, undefined, { runId: clientRunId });
-      const persistedImagesPromise = persistChatSendImages({
-        images: parsedImages,
+      const persistedAttachmentsPromise = persistChatSendAttachments({
+        attachments: persistentAttachments,
         client,
         logGateway: context.logGateway,
       });
+      const currentRunFileAttachments = (await persistedAttachmentsPromise).filter(
+        (entry) => !isImageSavedMedia(entry),
+      );
 
       const trimmedMessage = parsedMessage.trim();
       const injectThinking = Boolean(
@@ -1435,6 +1460,7 @@ export const chatHandlers: GatewayRequestHandlers = {
         SenderName: clientInfo?.displayName,
         SenderUsername: clientInfo?.displayName,
         GatewayClientScopes: client?.connect?.scopes,
+        ...resolveChatSendTranscriptMediaFields(currentRunFileAttachments),
       };
 
       const agentId = resolveSessionAgentId({
@@ -1467,13 +1493,13 @@ export const chatHandlers: GatewayRequestHandlers = {
           return;
         }
         userTranscriptUpdateEmitted = true;
-        const persistedImages = await persistedImagesPromise;
+        const persistedAttachments = await persistedAttachmentsPromise;
         emitSessionTranscriptUpdate({
           sessionFile: transcriptPath,
           sessionKey,
           message: buildChatSendTranscriptMessage({
             message: parsedMessage,
-            savedImages: persistedImages,
+            savedAttachments: persistedAttachments,
             timestamp: now,
           }),
         });
@@ -1502,7 +1528,7 @@ export const chatHandlers: GatewayRequestHandlers = {
           transcriptPath,
           sessionKey,
           message: parsedMessage,
-          savedImages: await persistedImagesPromise,
+          savedAttachments: await persistedAttachmentsPromise,
         });
       };
       const dispatcher = createReplyDispatcher({

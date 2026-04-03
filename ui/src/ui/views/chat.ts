@@ -3,7 +3,7 @@ import { ref } from "lit/directives/ref.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
   CHAT_ATTACHMENT_ACCEPT,
-  isSupportedChatAttachmentMimeType,
+  isImageChatAttachmentMimeType,
 } from "../chat/attachment-support.ts";
 import { DeletedMessages } from "../chat/deleted-messages.ts";
 import { exportChatMarkdown } from "../chat/export.ts";
@@ -336,61 +336,25 @@ function generateAttachmentId(): string {
   return `att-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-function handlePaste(e: ClipboardEvent, props: ChatProps) {
-  const items = e.clipboardData?.items;
-  if (!items || !props.onAttachmentsChange) {
+function readFilesAsAttachments(
+  files: Iterable<File>,
+  props: ChatProps,
+  current: ChatAttachment[] = props.attachments ?? [],
+) {
+  if (!props.onAttachmentsChange) {
     return;
   }
-  const imageItems: DataTransferItem[] = [];
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    if (item.type.startsWith("image/")) {
-      imageItems.push(item);
-    }
-  }
-  if (imageItems.length === 0) {
-    return;
-  }
-  e.preventDefault();
-  for (const item of imageItems) {
-    const file = item.getAsFile();
-    if (!file) {
-      continue;
-    }
-    const reader = new FileReader();
-    reader.addEventListener("load", () => {
-      const dataUrl = reader.result as string;
-      const newAttachment: ChatAttachment = {
-        id: generateAttachmentId(),
-        dataUrl,
-        mimeType: file.type,
-      };
-      const current = props.attachments ?? [];
-      props.onAttachmentsChange?.([...current, newAttachment]);
-    });
-    reader.readAsDataURL(file);
-  }
-}
-
-function handleFileSelect(e: Event, props: ChatProps) {
-  const input = e.target as HTMLInputElement;
-  if (!input.files || !props.onAttachmentsChange) {
-    return;
-  }
-  const current = props.attachments ?? [];
   const additions: ChatAttachment[] = [];
   let pending = 0;
-  for (const file of input.files) {
-    if (!isSupportedChatAttachmentMimeType(file.type)) {
-      continue;
-    }
+  for (const file of files) {
     pending++;
     const reader = new FileReader();
     reader.addEventListener("load", () => {
       additions.push({
         id: generateAttachmentId(),
         dataUrl: reader.result as string,
-        mimeType: file.type,
+        mimeType: file.type || "application/octet-stream",
+        fileName: file.name || undefined,
       });
       pending--;
       if (pending === 0) {
@@ -399,6 +363,41 @@ function handleFileSelect(e: Event, props: ChatProps) {
     });
     reader.readAsDataURL(file);
   }
+}
+
+function handlePaste(e: ClipboardEvent, props: ChatProps) {
+  const items = e.clipboardData?.items;
+  if (!items || !props.onAttachmentsChange) {
+    return;
+  }
+  const fileItems: DataTransferItem[] = [];
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (item.kind === "file") {
+      fileItems.push(item);
+    }
+  }
+  if (fileItems.length === 0) {
+    return;
+  }
+  e.preventDefault();
+  const files: File[] = [];
+  for (const item of fileItems) {
+    const file = item.getAsFile();
+    if (!file) {
+      continue;
+    }
+    files.push(file);
+  }
+  readFilesAsAttachments(files, props);
+}
+
+function handleFileSelect(e: Event, props: ChatProps) {
+  const input = e.target as HTMLInputElement;
+  if (!input.files || !props.onAttachmentsChange) {
+    return;
+  }
+  readFilesAsAttachments(input.files, props);
   input.value = "";
 }
 
@@ -408,28 +407,7 @@ function handleDrop(e: DragEvent, props: ChatProps) {
   if (!files || !props.onAttachmentsChange) {
     return;
   }
-  const current = props.attachments ?? [];
-  const additions: ChatAttachment[] = [];
-  let pending = 0;
-  for (const file of files) {
-    if (!isSupportedChatAttachmentMimeType(file.type)) {
-      continue;
-    }
-    pending++;
-    const reader = new FileReader();
-    reader.addEventListener("load", () => {
-      additions.push({
-        id: generateAttachmentId(),
-        dataUrl: reader.result as string,
-        mimeType: file.type,
-      });
-      pending--;
-      if (pending === 0) {
-        props.onAttachmentsChange?.([...current, ...additions]);
-      }
-    });
-    reader.readAsDataURL(file);
-  }
+  readFilesAsAttachments(files, props);
 }
 
 function renderAttachmentPreview(props: ChatProps): TemplateResult | typeof nothing {
@@ -442,7 +420,16 @@ function renderAttachmentPreview(props: ChatProps): TemplateResult | typeof noth
       ${attachments.map(
         (att) => html`
           <div class="chat-attachment-thumb">
-            <img src=${att.dataUrl} alt="Attachment preview" />
+            ${
+              isImageChatAttachmentMimeType(att.mimeType)
+                ? html`<img src=${att.dataUrl} alt="Attachment preview" />`
+                : html`<div class="chat-attachment-file">
+                    ${icons.paperclip}
+                    <span title=${att.fileName ?? att.mimeType}>
+                      ${att.fileName ?? att.mimeType ?? "Attachment"}
+                    </span>
+                  </div>`
+            }
             <button
               class="chat-attachment-remove"
               type="button"
@@ -1181,7 +1168,9 @@ export function renderChat(props: ChatProps) {
                       <div class="chat-queue__text">
                         ${
                           item.text ||
-                          (item.attachments?.length ? `Image (${item.attachments.length})` : "")
+                          (item.attachments?.length
+                            ? `Attachment (${item.attachments.length})`
+                            : "")
                         }
                       </div>
                       <button

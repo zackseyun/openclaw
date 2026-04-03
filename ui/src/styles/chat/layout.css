@@ -688,11 +688,17 @@
 .chat-attachment-file {
   display: flex;
   align-items: center;
+  justify-content: center;
+  flex-direction: column;
   gap: 4px;
   padding: 4px;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: break-word;
+  text-align: center;
   font-size: 0.72rem;
   color: var(--muted);
 }

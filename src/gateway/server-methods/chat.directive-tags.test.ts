@@ -1230,6 +1230,61 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     });
   });
 
+  it("injects non-image attachments into the current dispatch context and transcript", async () => {
+    createTranscriptFixture("openclaw-chat-send-user-transcript-files-");
+    mockState.finalText = "ok";
+    mockState.triggerAgentRunStart = true;
+    mockState.savedMediaResults = [{ path: "/tmp/chat-send-notes.pdf", contentType: "application/pdf" }];
+    const respond = vi.fn();
+    const context = createChatContext();
+
+    await runNonStreamingChatSend({
+      context,
+      respond,
+      idempotencyKey: "idem-user-transcript-files",
+      message: "please read the attachment",
+      requestParams: {
+        attachments: [
+          {
+            mimeType: "application/pdf",
+            fileName: "notes.pdf",
+            content: Buffer.from("%PDF-1.4\nhello\n").toString("base64"),
+          },
+        ],
+      },
+      expectBroadcast: false,
+    });
+
+    await waitForAssertion(() => {
+      expect(mockState.savedMediaCalls).toEqual([
+        expect.objectContaining({ contentType: "application/pdf", subdir: "inbound" }),
+      ]);
+      expect(mockState.lastDispatchImages).toBeUndefined();
+      expect(mockState.lastDispatchCtx?.MediaPath).toBe("/tmp/chat-send-notes.pdf");
+      expect(mockState.lastDispatchCtx?.MediaPaths).toEqual(["/tmp/chat-send-notes.pdf"]);
+      expect(mockState.lastDispatchCtx?.MediaType).toBe("application/pdf");
+      expect(mockState.lastDispatchCtx?.MediaTypes).toEqual(["application/pdf"]);
+
+      const userUpdate = mockState.emittedTranscriptUpdates.find(
+        (update) =>
+          typeof update.message === "object" &&
+          update.message !== null &&
+          (update.message as { role?: unknown }).role === "user",
+      );
+      expect(userUpdate).toMatchObject({
+        sessionKey: "main",
+        message: {
+          role: "user",
+          content: "please read the attachment",
+          MediaPath: "/tmp/chat-send-notes.pdf",
+          MediaPaths: ["/tmp/chat-send-notes.pdf"],
+          MediaType: "application/pdf",
+          MediaTypes: ["application/pdf"],
+        },
+      });
+    });
+  });
+
   it("rewrites the persisted user turn with saved media paths after dispatch", async () => {
     createTranscriptFixture("openclaw-chat-send-user-transcript-rewrite-");
     appendTranscriptMessage({

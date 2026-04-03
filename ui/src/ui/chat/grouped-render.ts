@@ -23,6 +23,11 @@ type ImageBlock = {
   alt?: string;
 };
 
+type FileBlock = {
+  fileName?: string;
+  mimeType?: string;
+};
+
 function extractImages(message: unknown): ImageBlock[] {
   const m = message as Record<string, unknown>;
   const content = m.content;
@@ -58,6 +63,32 @@ function extractImages(message: unknown): ImageBlock[] {
   }
 
   return images;
+}
+
+function extractFiles(message: unknown): FileBlock[] {
+  const m = message as Record<string, unknown>;
+  const content = m.content;
+  const files: FileBlock[] = [];
+
+  if (!Array.isArray(content)) {
+    return files;
+  }
+
+  for (const block of content) {
+    if (typeof block !== "object" || block === null) {
+      continue;
+    }
+    const b = block as Record<string, unknown>;
+    if (b.type !== "file") {
+      continue;
+    }
+    files.push({
+      fileName: typeof b.fileName === "string" ? b.fileName : undefined,
+      mimeType: typeof b.mimeType === "string" ? b.mimeType : undefined,
+    });
+  }
+
+  return files;
 }
 
 export function renderReadingIndicatorGroup(assistant?: AssistantIdentity, basePath?: string) {
@@ -653,6 +684,8 @@ function renderGroupedMessage(
   const hasToolCards = toolCards.length > 0;
   const images = extractImages(message);
   const hasImages = images.length > 0;
+  const files = extractFiles(message);
+  const hasFiles = files.length > 0;
 
   const extractedText = extractTextCached(message);
   const extractedThinking =
@@ -676,7 +709,7 @@ function renderGroupedMessage(
 
   // Suppress empty bubbles when tool cards are the only content and toggle is off
   const visibleToolCards = hasToolCards && (opts.showToolCalls ?? true);
-  if (!markdown && !visibleToolCards && !hasImages) {
+  if (!markdown && !visibleToolCards && !hasImages && !hasFiles) {
     return nothing;
   }
 
@@ -738,6 +771,7 @@ function renderGroupedMessage(
                       ? html`<div class="chat-text" dir="${detectTextDirection(markdown)}">${unsafeHTML(toSanitizedMarkdownHtml(markdown))}</div>`
                       : nothing
                 }
+                ${renderMessageFiles(files)}
                 ${hasToolCards ? renderCollapsedToolCards(toolCards, onOpenSidebar) : nothing}
               </div>
             </details>
@@ -764,9 +798,32 @@ function renderGroupedMessage(
                   ? html`<div class="chat-text" dir="${detectTextDirection(markdown)}">${unsafeHTML(toSanitizedMarkdownHtml(markdown))}</div>`
                   : nothing
             }
+            ${renderMessageFiles(files)}
             ${hasToolCards ? renderCollapsedToolCards(toolCards, onOpenSidebar) : nothing}
           `
       }
+    </div>
+  `;
+}
+
+function renderMessageFiles(files: FileBlock[]) {
+  if (files.length === 0) {
+    return nothing;
+  }
+  return html`
+    <div class="chat-attachments-preview">
+      ${files.map(
+        (file) => html`
+          <div class="chat-attachment-thumb">
+            <div class="chat-attachment-file">
+              ${icons.paperclip}
+              <span title=${file.fileName ?? file.mimeType ?? "Attachment"}>
+                ${file.fileName ?? file.mimeType ?? "Attachment"}
+              </span>
+            </div>
+          </div>
+        `,
+      )}
     </div>
   `;
 }

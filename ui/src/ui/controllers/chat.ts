@@ -94,11 +94,16 @@ export async function loadChatHistory(state: ChatState) {
 }
 
 function dataUrlToBase64(dataUrl: string): { content: string; mimeType: string } | null {
-  const match = /^data:([^;]+);base64,(.+)$/.exec(dataUrl);
+  const match = /^data:([^,]*?),(.+)$/.exec(dataUrl);
   if (!match) {
     return null;
   }
-  return { mimeType: match[1], content: match[2] };
+  const metadata = match[1];
+  if (!/;base64$/i.test(metadata)) {
+    return null;
+  }
+  const mimeType = metadata.split(";")[0]?.trim() || "application/octet-stream";
+  return { mimeType, content: match[2] };
 }
 
 type AssistantMessageNormalizationOptions = {
@@ -167,17 +172,31 @@ export async function sendChatMessage(
   const now = Date.now();
 
   // Build user message content blocks
-  const contentBlocks: Array<{ type: string; text?: string; source?: unknown }> = [];
+  const contentBlocks: Array<{
+    type: string;
+    text?: string;
+    source?: unknown;
+    fileName?: string;
+    mimeType?: string;
+  }> = [];
   if (msg) {
     contentBlocks.push({ type: "text", text: msg });
   }
   // Add image previews to the message for display
   if (hasAttachments) {
     for (const att of attachments) {
-      contentBlocks.push({
-        type: "image",
-        source: { type: "base64", media_type: att.mimeType, data: att.dataUrl },
-      });
+      if (att.mimeType.startsWith("image/")) {
+        contentBlocks.push({
+          type: "image",
+          source: { type: "base64", media_type: att.mimeType, data: att.dataUrl },
+        });
+      } else {
+        contentBlocks.push({
+          type: "file",
+          fileName: att.fileName ?? "attachment",
+          mimeType: att.mimeType,
+        });
+      }
     }
   }
 
@@ -206,8 +225,9 @@ export async function sendChatMessage(
             return null;
           }
           return {
-            type: "image",
-            mimeType: parsed.mimeType,
+            type: att.mimeType.startsWith("image/") ? "image" : "file",
+            mimeType: parsed.mimeType || att.mimeType || "application/octet-stream",
+            fileName: att.fileName,
             content: parsed.content,
           };
         })

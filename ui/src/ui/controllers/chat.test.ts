@@ -572,6 +572,46 @@ describe("sendChatMessage", () => {
       ],
     });
   });
+
+  it("sends non-image attachments as file payloads", async () => {
+    const request = vi.fn().mockResolvedValue({ ok: true });
+    const state = createState({
+      connected: true,
+      client: { request } as unknown as ChatState["client"],
+    });
+
+    const result = await sendChatMessage(state, "review this", [
+      {
+        id: "att-1",
+        dataUrl: "data:text/plain;base64,SGVsbG8gd29ybGQ=",
+        mimeType: "text/plain",
+        fileName: "notes.txt",
+      },
+    ]);
+
+    expect(result).toBeTruthy();
+    expect(request).toHaveBeenCalledWith("chat.send", {
+      sessionKey: "main",
+      message: "review this",
+      deliver: false,
+      idempotencyKey: expect.any(String),
+      attachments: [
+        {
+          type: "file",
+          mimeType: "text/plain",
+          fileName: "notes.txt",
+          content: "SGVsbG8gd29ybGQ=",
+        },
+      ],
+    });
+    expect(state.chatMessages.at(-1)).toMatchObject({
+      role: "user",
+      content: [
+        { type: "text", text: "review this" },
+        { type: "file", fileName: "notes.txt", mimeType: "text/plain" },
+      ],
+    });
+  });
 });
 
 describe("abortChatRun", () => {
