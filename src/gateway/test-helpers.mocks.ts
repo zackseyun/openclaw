@@ -14,8 +14,13 @@ import type { HooksConfig } from "../config/types.hooks.js";
 import type { TailscaleWhoisIdentity } from "../infra/tailscale.js";
 import type { PluginRegistry } from "../plugins/registry.js";
 import { setActivePluginRegistry } from "../plugins/runtime.js";
+import type { SpeechProviderPlugin } from "../plugins/types.js";
 import { DEFAULT_ACCOUNT_ID } from "../routing/session-key.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
+
+function buildBundledPluginModuleId(pluginId: string, artifactBasename: string): string {
+  return ["..", "..", "extensions", pluginId, artifactBasename].join("/");
+}
 
 type StubChannelOptions = {
   id: ChannelPlugin["id"];
@@ -28,6 +33,9 @@ type GetReplyFromConfigFn = (
   opts?: GetReplyOptions,
   configOverride?: OpenClawConfig,
 ) => Promise<ReplyPayload | ReplyPayload[] | undefined>;
+type CronIsolatedRunFn = (...args: unknown[]) => Promise<{ status: string; summary: string }>;
+type AgentCommandFn = (...args: unknown[]) => Promise<void>;
+type SendWhatsAppFn = (...args: unknown[]) => Promise<{ messageId: string; toJid: string }>;
 
 const createStubOutboundAdapter = (channelId: ChannelPlugin["id"]): ChannelOutboundAdapter => ({
   deliveryMode: "direct",
@@ -73,6 +81,32 @@ const createStubChannelPlugin = (params: StubChannelOptions): ChannelPlugin => (
       loggedOut: false,
     }),
   },
+});
+
+type StubSpeechProviderOptions = {
+  id: SpeechProviderPlugin["id"];
+  label: string;
+  aliases?: string[];
+  voices?: string[];
+};
+
+const createStubSpeechProvider = (params: StubSpeechProviderOptions): SpeechProviderPlugin => ({
+  id: params.id,
+  label: params.label,
+  aliases: params.aliases,
+  voices: params.voices,
+  isConfigured: () => true,
+  synthesize: async () => ({
+    audioBuffer: Buffer.from(`${params.id}-audio`, "utf8"),
+    outputFormat: "mp3",
+    fileExtension: ".mp3",
+    voiceCompatible: true,
+  }),
+  listVoices: async () =>
+    (params.voices ?? []).map((voiceId) => ({
+      id: voiceId,
+      name: voiceId,
+    })),
 });
 
 const createStubPluginRegistry = (): PluginRegistry => ({
@@ -147,9 +181,31 @@ const createStubPluginRegistry = (): PluginRegistry => ({
   ],
   channelSetups: [],
   providers: [],
-  speechProviders: [],
+  speechProviders: [
+    {
+      pluginId: "openai",
+      source: "test",
+      provider: createStubSpeechProvider({
+        id: "openai",
+        label: "OpenAI",
+        voices: ["alloy", "nova"],
+      }),
+    },
+    {
+      pluginId: "elevenlabs",
+      source: "test",
+      provider: createStubSpeechProvider({
+        id: "elevenlabs",
+        label: "ElevenLabs",
+        voices: ["EXAVITQu4vr4xnSDxMaL", "voice-default"],
+      }),
+    },
+  ],
+  realtimeTranscriptionProviders: [],
+  realtimeVoiceProviders: [],
   mediaUnderstandingProviders: [],
   imageGenerationProviders: [],
+  webFetchProviders: [],
   webSearchProviders: [],
   gatewayHandlers: {},
   httpRoutes: [],
@@ -182,8 +238,8 @@ const hoisted = vi.hoisted(() => {
           reasoning?: boolean;
         }>;
       };
-      cronIsolatedRun: ReturnType<typeof vi.fn>;
-      agentCommand: ReturnType<typeof vi.fn>;
+      cronIsolatedRun: Mock<CronIsolatedRunFn>;
+      agentCommand: Mock<AgentCommandFn>;
       testIsNixMode: { value: boolean };
       sessionStoreSaveDelayMs: { value: number };
       embeddedRunMock: {
@@ -193,8 +249,8 @@ const hoisted = vi.hoisted(() => {
         waitResults: Map<string, boolean>;
       };
       testTailscaleWhois: { value: TailscaleWhoisIdentity | null };
-      getReplyFromConfig: ReturnType<typeof vi.fn<GetReplyFromConfigFn>>;
-      sendWhatsAppMock: ReturnType<typeof vi.fn>;
+      getReplyFromConfig: Mock<GetReplyFromConfigFn>;
+      sendWhatsAppMock: Mock<SendWhatsAppFn>;
       testState: {
         agentConfig: Record<string, unknown> | undefined;
         agentsConfig: Record<string, unknown> | undefined;
@@ -295,13 +351,13 @@ export const setTestConfigRoot = (root: string) => {
 export const testTailnetIPv4 = hoisted.testTailnetIPv4;
 export const testTailscaleWhois = hoisted.testTailscaleWhois;
 export const piSdkMock = hoisted.piSdkMock;
-export const cronIsolatedRun = hoisted.cronIsolatedRun;
-export const agentCommand = hoisted.agentCommand;
+export const cronIsolatedRun: Mock<CronIsolatedRunFn> = hoisted.cronIsolatedRun;
+export const agentCommand: Mock<AgentCommandFn> = hoisted.agentCommand;
 export const getReplyFromConfig: Mock<GetReplyFromConfigFn> = hoisted.getReplyFromConfig;
 export const mockGetReplyFromConfigOnce = (impl: GetReplyFromConfigFn) => {
   getReplyFromConfig.mockImplementationOnce(impl);
 };
-export const sendWhatsAppMock = hoisted.sendWhatsAppMock;
+export const sendWhatsAppMock: Mock<SendWhatsAppFn> = hoisted.sendWhatsAppMock;
 
 export const testState = hoisted.testState;
 
@@ -309,19 +365,96 @@ export const testIsNixMode = hoisted.testIsNixMode;
 export const sessionStoreSaveDelayMs = hoisted.sessionStoreSaveDelayMs;
 export const embeddedRunMock = hoisted.embeddedRunMock;
 
+function createEmbeddedRunMockExports() {
+  return {
+    isEmbeddedPiRunActive: (sessionId: string) => embeddedRunMock.activeIds.has(sessionId),
+    abortEmbeddedPiRun: (sessionId: string) => {
+      embeddedRunMock.abortCalls.push(sessionId);
+      return embeddedRunMock.activeIds.has(sessionId);
+    },
+    waitForEmbeddedPiRunEnd: async (sessionId: string) => {
+      embeddedRunMock.waitCalls.push(sessionId);
+      return embeddedRunMock.waitResults.get(sessionId) ?? true;
+    },
+  };
+}
+
+async function importEmbeddedRunMockModule<TModule extends object>(
+  actualPath: string,
+  opts?: { includeActiveCount?: boolean },
+): Promise<TModule> {
+  const actual = await vi.importActual<TModule>(actualPath);
+  return {
+    ...actual,
+    ...createEmbeddedRunMockExports(),
+    ...(opts?.includeActiveCount
+      ? { getActiveEmbeddedRunCount: () => embeddedRunMock.activeIds.size }
+      : {}),
+  };
+}
+
 vi.mock("../agents/pi-model-discovery.js", async () => {
   const actual = await vi.importActual<typeof import("../agents/pi-model-discovery.js")>(
     "../agents/pi-model-discovery.js",
   );
 
-  class MockModelRegistry extends actual.ModelRegistry {
-    override getAll(): ReturnType<typeof actual.ModelRegistry.prototype.getAll> {
+  const createActualRegistry = (...args: Parameters<typeof actual.discoverModels>) => {
+    const modelsFile = path.join(args[1], "models.json");
+    const Registry = actual.ModelRegistry as unknown as {
+      create?: (
+        authStorage: unknown,
+        modelsFile: string,
+      ) => {
+        getAll: () => Array<{ provider?: string; id?: string }>;
+        getAvailable: () => Array<{ provider?: string; id?: string }>;
+        find: (provider: string, modelId: string) => unknown;
+      };
+      new (
+        authStorage: unknown,
+        modelsFile: string,
+      ): {
+        getAll: () => Array<{ provider?: string; id?: string }>;
+        getAvailable: () => Array<{ provider?: string; id?: string }>;
+        find: (provider: string, modelId: string) => unknown;
+      };
+    };
+    if (typeof Registry.create === "function") {
+      return Registry.create(args[0], modelsFile);
+    }
+    return new Registry(args[0], modelsFile);
+  };
+
+  class MockModelRegistry {
+    private readonly actualRegistry?: ReturnType<typeof createActualRegistry>;
+
+    constructor(authStorage: unknown, modelsFile: string) {
       if (!piSdkMock.enabled) {
-        return super.getAll();
+        this.actualRegistry = createActualRegistry(authStorage as never, path.dirname(modelsFile));
+      }
+    }
+
+    getAll() {
+      if (!piSdkMock.enabled) {
+        return this.actualRegistry?.getAll() ?? [];
       }
       piSdkMock.discoverCalls += 1;
-      // Cast to expected type for testing purposes
-      return piSdkMock.models as ReturnType<typeof actual.ModelRegistry.prototype.getAll>;
+      return piSdkMock.models as Array<{ provider?: string; id?: string }>;
+    }
+
+    getAvailable() {
+      if (!piSdkMock.enabled) {
+        return this.actualRegistry?.getAvailable() ?? [];
+      }
+      return piSdkMock.models as Array<{ provider?: string; id?: string }>;
+    }
+
+    find(provider: string, modelId: string) {
+      if (!piSdkMock.enabled) {
+        return this.actualRegistry?.find(provider, modelId);
+      }
+      return (piSdkMock.models as Array<{ provider?: string; id?: string }>).find(
+        (model) => model.provider === provider && model.id === modelId,
+      );
     }
   }
 
@@ -620,77 +753,29 @@ vi.mock("../config/config.js", async () => {
 });
 
 vi.mock("../agents/pi-embedded.js", async () => {
-  const actual = await vi.importActual<typeof import("../agents/pi-embedded.js")>(
+  return await importEmbeddedRunMockModule<typeof import("../agents/pi-embedded.js")>(
     "../agents/pi-embedded.js",
   );
-  return {
-    ...actual,
-    isEmbeddedPiRunActive: (sessionId: string) => embeddedRunMock.activeIds.has(sessionId),
-    abortEmbeddedPiRun: (sessionId: string) => {
-      embeddedRunMock.abortCalls.push(sessionId);
-      return embeddedRunMock.activeIds.has(sessionId);
-    },
-    waitForEmbeddedPiRunEnd: async (sessionId: string) => {
-      embeddedRunMock.waitCalls.push(sessionId);
-      return embeddedRunMock.waitResults.get(sessionId) ?? true;
-    },
-  };
 });
 
 vi.mock("/src/agents/pi-embedded.js", async () => {
-  const actual = await vi.importActual<typeof import("../agents/pi-embedded.js")>(
+  return await importEmbeddedRunMockModule<typeof import("../agents/pi-embedded.js")>(
     "../agents/pi-embedded.js",
   );
-  return {
-    ...actual,
-    isEmbeddedPiRunActive: (sessionId: string) => embeddedRunMock.activeIds.has(sessionId),
-    abortEmbeddedPiRun: (sessionId: string) => {
-      embeddedRunMock.abortCalls.push(sessionId);
-      return embeddedRunMock.activeIds.has(sessionId);
-    },
-    waitForEmbeddedPiRunEnd: async (sessionId: string) => {
-      embeddedRunMock.waitCalls.push(sessionId);
-      return embeddedRunMock.waitResults.get(sessionId) ?? true;
-    },
-  };
 });
 
 vi.mock("../agents/pi-embedded-runner/runs.js", async () => {
-  const actual = await vi.importActual<typeof import("../agents/pi-embedded-runner/runs.js")>(
+  return await importEmbeddedRunMockModule<typeof import("../agents/pi-embedded-runner/runs.js")>(
     "../agents/pi-embedded-runner/runs.js",
+    { includeActiveCount: true },
   );
-  return {
-    ...actual,
-    isEmbeddedPiRunActive: (sessionId: string) => embeddedRunMock.activeIds.has(sessionId),
-    abortEmbeddedPiRun: (sessionId: string) => {
-      embeddedRunMock.abortCalls.push(sessionId);
-      return embeddedRunMock.activeIds.has(sessionId);
-    },
-    waitForEmbeddedPiRunEnd: async (sessionId: string) => {
-      embeddedRunMock.waitCalls.push(sessionId);
-      return embeddedRunMock.waitResults.get(sessionId) ?? true;
-    },
-    getActiveEmbeddedRunCount: () => embeddedRunMock.activeIds.size,
-  };
 });
 
 vi.mock("/src/agents/pi-embedded-runner/runs.js", async () => {
-  const actual = await vi.importActual<typeof import("../agents/pi-embedded-runner/runs.js")>(
+  return await importEmbeddedRunMockModule<typeof import("../agents/pi-embedded-runner/runs.js")>(
     "../agents/pi-embedded-runner/runs.js",
+    { includeActiveCount: true },
   );
-  return {
-    ...actual,
-    isEmbeddedPiRunActive: (sessionId: string) => embeddedRunMock.activeIds.has(sessionId),
-    abortEmbeddedPiRun: (sessionId: string) => {
-      embeddedRunMock.abortCalls.push(sessionId);
-      return embeddedRunMock.activeIds.has(sessionId);
-    },
-    waitForEmbeddedPiRunEnd: async (sessionId: string) => {
-      embeddedRunMock.waitCalls.push(sessionId);
-      return embeddedRunMock.waitResults.get(sessionId) ?? true;
-    },
-    getActiveEmbeddedRunCount: () => embeddedRunMock.activeIds.size,
-  };
 });
 
 vi.mock("../commands/health.js", () => ({
@@ -699,7 +784,7 @@ vi.mock("../commands/health.js", () => ({
 vi.mock("../commands/status.js", () => ({
   getStatusSummary: vi.fn().mockResolvedValue({ ok: true }),
 }));
-vi.mock("../../extensions/whatsapp/runtime-api.js", () => ({
+vi.mock(buildBundledPluginModuleId("whatsapp", "runtime-api.js"), () => ({
   sendMessageWhatsApp: (...args: unknown[]) =>
     (hoisted.sendWhatsAppMock as (...args: unknown[]) => unknown)(...args),
   sendPollWhatsApp: (...args: unknown[]) =>
@@ -767,12 +852,12 @@ vi.mock("../plugins/loader.js", async () => {
     loadOpenClawPlugins: () => pluginRegistryState.registry,
   };
 });
-vi.mock("../plugins/runtime/runtime-whatsapp-boundary.js", () => ({
-  sendMessageWhatsApp: (...args: unknown[]) =>
+vi.mock("../plugins/runtime/runtime-web-channel-plugin.js", () => ({
+  sendWebChannelMessage: (...args: unknown[]) =>
     (hoisted.sendWhatsAppMock as (...args: unknown[]) => unknown)(...args),
 }));
-vi.mock("/src/plugins/runtime/runtime-whatsapp-boundary.js", () => ({
-  sendMessageWhatsApp: (...args: unknown[]) =>
+vi.mock("/src/plugins/runtime/runtime-web-channel-plugin.js", () => ({
+  sendWebChannelMessage: (...args: unknown[]) =>
     (hoisted.sendWhatsAppMock as (...args: unknown[]) => unknown)(...args),
 }));
 

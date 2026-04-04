@@ -45,6 +45,17 @@ with OpenClaw), others are **external** (published on npm by the community).
   </Step>
 </Steps>
 
+If you prefer chat-native control, enable `commands.plugins: true` and use:
+
+```text
+/plugin install clawhub:@openclaw/voice-call
+/plugin show voice-call
+/plugin enable voice-call
+```
+
+The install path uses the same resolver as the CLI: local path/archive, explicit
+`clawhub:<pkg>`, or bare package spec (ClawHub first, then npm fallback).
+
 ## Plugin types
 
 OpenClaw recognizes two plugin formats:
@@ -79,7 +90,7 @@ and the [Plugin SDK Overview](/plugins/sdk-overview).
     `anthropic`, `byteplus`, `cloudflare-ai-gateway`, `github-copilot`, `google`,
     `huggingface`, `kilocode`, `kimi-coding`, `minimax`, `mistral`, `modelstudio`,
     `moonshot`, `nvidia`, `openai`, `opencode`, `opencode-go`, `openrouter`,
-    `qianfan`, `qwen-portal-auth`, `synthetic`, `together`, `venice`,
+    `qianfan`, `synthetic`, `together`, `venice`,
     `vercel-ai-gateway`, `volcengine`, `xiaomi`, `zai`
   </Accordion>
 
@@ -93,6 +104,7 @@ and the [Plugin SDK Overview](/plugins/sdk-overview).
   </Accordion>
 
   <Accordion title="Other">
+    - `browser` — bundled browser plugin for the browser tool, `openclaw browser` CLI, `browser.request` gateway method, browser runtime, and default browser control service (enabled by default; disable before replacing it)
     - `copilot-proxy` — VS Code Copilot Proxy bridge (disabled by default)
   </Accordion>
 </AccordionGroup>
@@ -124,7 +136,9 @@ Looking for third-party plugins? See [Community Plugins](/plugins/community).
 | `slots`          | Exclusive slot selectors (e.g. `memory`, `contextEngine`) |
 | `entries.\<id\>` | Per-plugin toggles + config                               |
 
-Config changes **require a gateway restart**.
+Config changes **require a gateway restart**. If the Gateway is running with config
+watch + in-process restart enabled (the default `openclaw gateway` path), that
+restart is usually performed automatically a moment after the config write lands.
 
 <Accordion title="Plugin states: disabled vs missing vs invalid">
   - **Disabled**: plugin exists but enablement rules turned it off. Config is preserved.
@@ -142,11 +156,11 @@ OpenClaw scans for plugins in this order (first match wins):
   </Step>
 
   <Step title="Workspace extensions">
-    `\<workspace\>/.openclaw/extensions/*.ts` and `\<workspace\>/.openclaw/extensions/*/index.ts`.
+    `\<workspace\>/.openclaw/<plugin-root>/*.ts` and `\<workspace\>/.openclaw/<plugin-root>/*/index.ts`.
   </Step>
 
   <Step title="Global extensions">
-    `~/.openclaw/extensions/*.ts` and `~/.openclaw/extensions/*/index.ts`.
+    `~/.openclaw/<plugin-root>/*.ts` and `~/.openclaw/<plugin-root>/*/index.ts`.
   </Step>
 
   <Step title="Bundled plugins">
@@ -190,25 +204,50 @@ Some categories are exclusive (only one active at a time):
 openclaw plugins list                    # compact inventory
 openclaw plugins inspect <id>            # deep detail
 openclaw plugins inspect <id> --json     # machine-readable
-openclaw plugins status                  # operational summary
 openclaw plugins doctor                  # diagnostics
 
 openclaw plugins install <package>        # install (ClawHub first, then npm)
 openclaw plugins install clawhub:<pkg>   # install from ClawHub only
+openclaw plugins install <spec> --force  # overwrite existing install
 openclaw plugins install <path>          # install from local path
 openclaw plugins install -l <path>       # link (no copy) for dev
+openclaw plugins install <spec> --dangerously-force-unsafe-install
 openclaw plugins update <id>             # update one plugin
+openclaw plugins update <id> --dangerously-force-unsafe-install
 openclaw plugins update --all            # update all
+openclaw plugins uninstall <id>          # remove config/install records
+openclaw plugins uninstall <id> --keep-files
+openclaw plugins marketplace list <source>
 
 openclaw plugins enable <id>
 openclaw plugins disable <id>
 ```
 
+Bundled plugins ship with OpenClaw. Many are enabled by default (for example
+bundled model providers, bundled speech providers, and the bundled browser
+plugin). Other bundled plugins still need `openclaw plugins enable <id>`.
+
+`--force` overwrites an existing installed plugin or hook pack in place.
+It is not supported with `--link`, which reuses the source path instead of
+copying over a managed install target.
+
+`--dangerously-force-unsafe-install` is a break-glass override for false
+positives from the built-in dangerous-code scanner. It allows plugin installs
+and plugin updates to continue past built-in `critical` findings, but it still
+does not bypass plugin `before_install` policy blocks or scan-failure blocking.
+
+This CLI flag applies to plugin install/update flows only. Gateway-backed skill
+dependency installs use the matching `dangerouslyForceUnsafeInstall` request
+override instead, while `openclaw skills install` remains the separate ClawHub
+skill download/install flow.
+
 See [`openclaw plugins` CLI reference](/cli/plugins) for full details.
 
 ## Plugin API overview
 
-Plugins export either a function or an object with `register(api)`:
+Native plugins export an entry object that exposes `register(api)`. Older
+plugins may still use `activate(api)` as a legacy alias, but new plugins should
+use `register`.
 
 ```typescript
 export default definePluginEntry({
@@ -228,6 +267,11 @@ export default definePluginEntry({
 });
 ```
 
+OpenClaw loads the entry object and calls `register(api)` during plugin
+activation. The loader still falls back to `activate(api)` for older plugins,
+but bundled plugins and new external plugins should treat `register` as the
+public contract.
+
 Common registration methods:
 
 | Method                               | What it registers    |
@@ -244,6 +288,17 @@ Common registration methods:
 | `registerCommand` / `registerCli`    | CLI commands         |
 | `registerContextEngine`              | Context engine       |
 | `registerService`                    | Background service   |
+
+Hook guard behavior for typed lifecycle hooks:
+
+- `before_tool_call`: `{ block: true }` is terminal; lower-priority handlers are skipped.
+- `before_tool_call`: `{ block: false }` is a no-op and does not clear an earlier block.
+- `before_install`: `{ block: true }` is terminal; lower-priority handlers are skipped.
+- `before_install`: `{ block: false }` is a no-op and does not clear an earlier block.
+- `message_sending`: `{ cancel: true }` is terminal; lower-priority handlers are skipped.
+- `message_sending`: `{ cancel: false }` is a no-op and does not clear an earlier cancel.
+
+For full typed hook behavior, see [SDK Overview](/plugins/sdk-overview#hook-decision-semantics).
 
 ## Related
 

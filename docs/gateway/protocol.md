@@ -89,6 +89,26 @@ When a device token is issued, `hello-ok` also includes:
 }
 ```
 
+During trusted bootstrap handoff, `hello-ok.auth` may also include additional
+bounded role entries in `deviceTokens`:
+
+```json
+{
+  "auth": {
+    "deviceToken": "…",
+    "role": "node",
+    "scopes": [],
+    "deviceTokens": [
+      {
+        "deviceToken": "…",
+        "role": "operator",
+        "scopes": ["operator.approvals", "operator.read", "operator.write"]
+      }
+    ]
+  }
+}
+```
+
 ### Node example
 
 ```json
@@ -181,12 +201,25 @@ The Gateway treats these as **claims** and enforces server-side allowlists.
   - `source`: `core` or `plugin`
   - `pluginId`: plugin owner when `source="plugin"`
   - `optional`: whether a plugin tool is optional
+- Operators may call `tools.effective` (`operator.read`) to fetch the runtime-effective tool
+  inventory for a session.
+  - `sessionKey` is required.
+  - The gateway derives trusted runtime context from the session server-side instead of accepting
+    caller-supplied auth or delivery context.
+  - The response is session-scoped and reflects what the active conversation can use right now,
+    including core, plugin, and channel tools.
 
 ## Exec approvals
 
 - When an exec request needs approval, the gateway broadcasts `exec.approval.requested`.
 - Operator clients resolve by calling `exec.approval.resolve` (requires `operator.approvals` scope).
 - For `host=node`, `exec.approval.request` must include `systemRunPlan` (canonical `argv`/`cwd`/`rawCommand`/session metadata). Requests missing `systemRunPlan` are rejected.
+
+## Agent delivery fallback
+
+- `agent` requests can include `deliver=true` to request outbound delivery.
+- `bestEffortDeliver=false` keeps strict behavior: unresolved or internal-only delivery targets return `INVALID_REQUEST`.
+- `bestEffortDeliver=true` allows fallback to session-only execution when no external deliverable route can be resolved (for example internal/webchat sessions or ambiguous multi-channel configs).
 
 ## Versioning
 
@@ -204,6 +237,11 @@ The Gateway treats these as **claims** and enforces server-side allowlists.
 - After pairing, the Gateway issues a **device token** scoped to the connection
   role + scopes. It is returned in `hello-ok.auth.deviceToken` and should be
   persisted by the client for future connects.
+- Clients should persist the primary `hello-ok.auth.deviceToken` after any
+  successful connect.
+- Additional `hello-ok.auth.deviceTokens` entries are bootstrap handoff tokens.
+  Persist them only when the connect used bootstrap auth on a trusted transport
+  such as `wss://` or loopback/local pairing.
 - Device tokens can be rotated/revoked via `device.token.rotate` and
   `device.token.revoke` (requires `operator.pairing` scope).
 - Auth failures include `error.details.code` plus recovery hints:

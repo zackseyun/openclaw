@@ -13,6 +13,7 @@ export type ChatQueueItem = {
   refreshSessions?: boolean;
   localCommandArgs?: string;
   localCommandName?: string;
+  pendingRunId?: string;
 };
 
 export const CRON_CHANNEL_LAST = "last";

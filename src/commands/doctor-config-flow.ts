@@ -9,8 +9,13 @@ import { normalizeCompatibilityConfigValues } from "./doctor-legacy-config.js";
 import type { DoctorOptions } from "./doctor-prompter.js";
 import { emitDoctorNotes } from "./doctor/emit-notes.js";
 import { finalizeDoctorConfigFlow } from "./doctor/finalize-config-flow.js";
-import { runMatrixDoctorSequence } from "./doctor/providers/matrix.js";
 import { runDoctorRepairSequence } from "./doctor/repair-sequencing.js";
+import {
+  collectChannelDoctorCompatibilityMutations,
+  collectChannelDoctorMutableAllowlistWarnings,
+  collectChannelDoctorStaleConfigMutations,
+  runChannelDoctorConfigSequences,
+} from "./doctor/shared/channel-doctor.js";
 import {
   applyLegacyCompatibilityStep,
   applyUnknownConfigKeyStep,
@@ -20,11 +25,13 @@ import {
   collectMissingDefaultAccountBindingWarnings,
   collectMissingExplicitDefaultAccountWarnings,
 } from "./doctor/shared/default-account-warnings.js";
-import {
-  collectMutableAllowlistWarnings,
-  scanMutableAllowlistEntries,
-} from "./doctor/shared/mutable-allowlist.js";
 import { collectDoctorPreviewWarnings } from "./doctor/shared/preview-warnings.js";
+
+function hasLegacyInternalHookHandlers(raw: unknown): boolean {
+  const handlers = (raw as { hooks?: { internal?: { handlers?: unknown } } })?.hooks?.internal
+    ?.handlers;
+  return Array.isArray(handlers) && handlers.length > 0;
+}
 
 export async function loadAndMaybeMigrateDoctorConfig(params: {
   options: DoctorOptions;
@@ -48,10 +55,20 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
   });
   ({ cfg, candidate, pendingChanges, fixHints } = legacyStep.state);
   if (legacyStep.issueLines.length > 0) {
-    note(legacyStep.issueLines.join("\n"), "Compatibility config keys detected");
+    note(legacyStep.issueLines.join("\n"), "Legacy config keys detected");
   }
   if (legacyStep.changeLines.length > 0) {
     note(legacyStep.changeLines.join("\n"), "Doctor changes");
+  }
+  if (hasLegacyInternalHookHandlers(snapshot.parsed)) {
+    note(
+      [
+        "- hooks.internal.handlers: legacy inline hook modules are no longer part of the public config surface.",
+        "- Migrate each entry to a managed or workspace hook directory with HOOK.md + handler.js, then enable it through hooks.internal.entries.<hookKey> as needed.",
+        "- openclaw doctor --fix does not rewrite this shape automatically.",
+      ].join("\n"),
+      "Legacy config keys detected",
+    );
   }
 
   const normalized = normalizeCompatibilityConfigValues(candidate);
@@ -60,6 +77,19 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
     ({ cfg, candidate, pendingChanges, fixHints } = applyDoctorConfigMutation({
       state: { cfg, candidate, pendingChanges, fixHints },
       mutation: normalized,
+      shouldRepair,
+      fixHint: `Run "${doctorFixCommand}" to apply these changes.`,
+    }));
+  }
+
+  for (const compatibility of collectChannelDoctorCompatibilityMutations(candidate)) {
+    if (compatibility.changes.length === 0) {
+      continue;
+    }
+    note(compatibility.changes.join("\n"), "Doctor changes");
+    ({ cfg, candidate, pendingChanges, fixHints } = applyDoctorConfigMutation({
+      state: { cfg, candidate, pendingChanges, fixHints },
+      mutation: compatibility,
       shouldRepair,
       fixHint: `Run "${doctorFixCommand}" to apply these changes.`,
     }));
@@ -76,16 +106,29 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
     }));
   }
 
-  const matrixSequence = await runMatrixDoctorSequence({
+  const channelDoctorSequence = await runChannelDoctorConfigSequences({
     cfg: candidate,
     env: process.env,
     shouldRepair,
   });
   emitDoctorNotes({
     note,
-    changeNotes: matrixSequence.changeNotes,
-    warningNotes: matrixSequence.warningNotes,
+    changeNotes: channelDoctorSequence.changeNotes,
+    warningNotes: channelDoctorSequence.warningNotes,
   });
+
+  for (const staleCleanup of await collectChannelDoctorStaleConfigMutations(candidate)) {
+    if (staleCleanup.changes.length === 0) {
+      continue;
+    }
+    note(staleCleanup.changes.join("\n"), "Doctor changes");
+    ({ cfg, candidate, pendingChanges, fixHints } = applyDoctorConfigMutation({
+      state: { cfg, candidate, pendingChanges, fixHints },
+      mutation: staleCleanup,
+      shouldRepair,
+      fixHint: `Run "${doctorFixCommand}" to remove stale channel plugin references.`,
+    }));
+  }
 
   const missingDefaultAccountBindingWarnings =
     collectMissingDefaultAccountBindingWarnings(candidate);
@@ -111,16 +154,18 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
   } else {
     emitDoctorNotes({
       note,
-      warningNotes: collectDoctorPreviewWarnings({
+      warningNotes: await collectDoctorPreviewWarnings({
         cfg: candidate,
         doctorFixCommand,
       }),
     });
   }
 
-  const mutableAllowlistHits = scanMutableAllowlistEntries(candidate);
-  if (mutableAllowlistHits.length > 0) {
-    note(collectMutableAllowlistWarnings(mutableAllowlistHits).join("\n"), "Doctor warnings");
+  const mutableAllowlistWarnings = await collectChannelDoctorMutableAllowlistWarnings({
+    cfg: candidate,
+  });
+  if (mutableAllowlistWarnings.length > 0) {
+    note(mutableAllowlistWarnings.join("\n"), "Doctor warnings");
   }
 
   const unknownStep = applyUnknownConfigKeyStep({
