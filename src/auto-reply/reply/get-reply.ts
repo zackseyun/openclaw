@@ -9,6 +9,7 @@ import { resolveAgentTimeoutMs } from "../../agents/timeout.js";
 import { DEFAULT_AGENT_WORKSPACE_DIR, ensureAgentWorkspace } from "../../agents/workspace.js";
 import { resolveChannelModelOverride } from "../../channels/model-overrides.js";
 import { type OpenClawConfig, loadConfig } from "../../config/config.js";
+import { resolveAgentModelPrimaryValue } from "../../config/model-input.js";
 import { defaultRuntime } from "../../runtime.js";
 import { normalizeStringEntries } from "../../shared/string-normalization.js";
 import { resolveCommandAuthorization } from "../command-auth.js";
@@ -160,6 +161,22 @@ export async function getReplyFromConfig(
       provider = heartbeatRef.ref.provider;
       model = heartbeatRef.ref.model;
       hasResolvedHeartbeatModelOverride = true;
+    }
+  }
+
+  const hasInboundImages = Array.isArray(resolvedOpts?.images) && resolvedOpts.images.length > 0;
+  if (hasInboundImages) {
+    const imageModelRaw = resolveAgentModelPrimaryValue(cfg.agents?.defaults?.imageModel);
+    const imageModelRef = imageModelRaw
+      ? resolveModelRefFromString({
+          raw: imageModelRaw,
+          defaultProvider,
+          aliasIndex,
+        })
+      : null;
+    if (imageModelRef) {
+      provider = imageModelRef.ref.provider;
+      model = imageModelRef.ref.model;
     }
   }
 
