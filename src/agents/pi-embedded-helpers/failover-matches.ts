@@ -44,6 +44,8 @@ const ERROR_PATTERNS = {
     "model_cooldown",
     "exceeded your current quota",
     "resource has been exhausted",
+    "request rate increased too quickly",
+    "scale requests more smoothly over time",
     "quota exceeded",
     "resource_exhausted",
     "usage limit",

@@ -823,6 +823,11 @@ describe("classifyFailoverReason", () => {
     expect(classifyFailoverReason(TOGETHER_ENGINE_OVERLOADED_MESSAGE)).toBe("overloaded");
     expect(classifyFailoverReason(GROQ_TOO_MANY_REQUESTS_MESSAGE)).toBe("rate_limit");
     expect(classifyFailoverReason(GROQ_SERVICE_UNAVAILABLE_MESSAGE)).toBe("overloaded");
+    expect(
+      classifyFailoverReason(
+        "Upstream error from Alibaba: Request rate increased too quickly. To ensure system stability, please adjust your client logic to scale requests more smoothly over time.",
+      ),
+    ).toBe("rate_limit");
     // Venice 402 billing error with extra words between "insufficient" and "balance"
     expect(
       classifyFailoverReason(
