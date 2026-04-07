@@ -1535,6 +1535,7 @@ export function renderApp(state: AppViewState) {
           ? renderChat({
               sessionKey: state.sessionKey,
               onSessionKeyChange: (next) => {
+                const previousSessionKey = state.sessionKey;
                 state.sessionKey = next;
                 state.chatMessage = "";
                 state.chatAttachments = [];
@@ -1549,6 +1550,8 @@ export function renderApp(state: AppViewState) {
                   sessionKey: next,
                   lastActiveSessionKey: next,
                 });
+                void unsubscribeSessionMessages(state, previousSessionKey);
+                void subscribeSessionMessages(state, next);
                 void state.loadAssistantIdentity();
                 void loadChatHistory(state);
                 void refreshChatAvatar(state);

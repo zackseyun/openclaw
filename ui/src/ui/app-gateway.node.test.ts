@@ -5,6 +5,7 @@ import { connectGateway, resolveControlUiClientVersion } from "./app-gateway.ts"
 import type { GatewayHelloOk } from "./gateway.ts";
 
 const loadChatHistoryMock = vi.hoisted(() => vi.fn(async () => undefined));
+const subscribeSessionMessagesMock = vi.hoisted(() => vi.fn(async () => undefined));
 
 type GatewayClientMock = {
   start: ReturnType<typeof vi.fn>;
@@ -95,6 +96,15 @@ vi.mock("./controllers/chat.ts", async () => {
   return {
     ...actual,
     loadChatHistory: loadChatHistoryMock,
+  };
+});
+
+vi.mock("./controllers/sessions.ts", async () => {
+  const actual =
+    await vi.importActual<typeof import("./controllers/sessions.ts")>("./controllers/sessions.ts");
+  return {
+    ...actual,
+    subscribeSessionMessages: subscribeSessionMessagesMock,
   };
 });
 
@@ -189,6 +199,7 @@ describe("connectGateway", () => {
   beforeEach(() => {
     gatewayClientInstances.length = 0;
     loadChatHistoryMock.mockClear();
+    subscribeSessionMessagesMock.mockClear();
   });
 
   it("ignores stale client onGap callbacks after reconnect", () => {
@@ -639,6 +650,72 @@ describe("connectGateway", () => {
     });
 
     expect(loadChatHistoryMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("subscribes to active session message events on hello", () => {
+    const host = createHost();
+
+    connectGateway(host);
+    const client = gatewayClientInstances[0];
+    expect(client).toBeDefined();
+
+    client.emitHello();
+
+    expect(subscribeSessionMessagesMock).toHaveBeenCalledWith(expect.anything(), "main");
+  });
+
+  it("appends current-session transcript messages live", () => {
+    const host = createHost();
+
+    connectGateway(host);
+    const client = gatewayClientInstances[0];
+    expect(client).toBeDefined();
+
+    client.emitEvent({
+      event: "session.message",
+      payload: {
+        sessionKey: "main",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "Live transcript message" }],
+          timestamp: 123,
+          __openclaw: { id: "msg-live-1", seq: 1 },
+        },
+      },
+    });
+
+    expect(host.chatMessages).toEqual([
+      expect.objectContaining({
+        role: "assistant",
+        content: [{ type: "text", text: "Live transcript message" }],
+      }),
+    ]);
+  });
+
+  it("dedupes repeated session.message payloads by transcript id", () => {
+    const host = createHost();
+
+    connectGateway(host);
+    const client = gatewayClientInstances[0];
+    expect(client).toBeDefined();
+
+    const payload = {
+      event: "session.message",
+      payload: {
+        sessionKey: "main",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "Live transcript message" }],
+          timestamp: 123,
+          __openclaw: { id: "msg-live-1", seq: 1 },
+        },
+      },
+    } as const;
+
+    client.emitEvent(payload);
+    client.emitEvent(payload);
+
+    expect(host.chatMessages).toHaveLength(1);
   });
 
   it("updates chat stream from assistant agent events for the active run", () => {

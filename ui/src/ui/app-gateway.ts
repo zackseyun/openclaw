@@ -34,7 +34,12 @@ import {
 } from "./controllers/exec-approval.ts";
 import { loadHealthState } from "./controllers/health.ts";
 import { loadNodes } from "./controllers/nodes.ts";
-import { loadSessions, subscribeSessions } from "./controllers/sessions.ts";
+import {
+  loadSessions,
+  subscribeSessionMessages,
+  subscribeSessions,
+  unsubscribeSessionMessages,
+} from "./controllers/sessions.ts";
 import {
   resolveGatewayErrorDetailCode,
   type GatewayEventFrame,
@@ -43,6 +48,7 @@ import {
 import { GatewayBrowserClient } from "./gateway.ts";
 import type { Tab } from "./navigation.ts";
 import type { UiSettings } from "./storage.ts";
+import { extractText } from "./chat/message-extract.ts";
 import type {
   AgentsListResult,
   PresenceEntry,
@@ -117,6 +123,65 @@ const SILENT_REPLY_PATTERN = /^\s*NO_REPLY\s*$/i;
 
 function isSilentReplyText(text: string): boolean {
   return SILENT_REPLY_PATTERN.test(text);
+}
+
+function matchesCurrentSessionKey(incoming: string, current: string): boolean {
+  const incomingNormalized = incoming.trim().toLowerCase();
+  const currentNormalized = current.trim().toLowerCase();
+  if (!incomingNormalized || !currentNormalized) {
+    return false;
+  }
+  if (incomingNormalized === currentNormalized) {
+    return true;
+  }
+  if (
+    (incomingNormalized === "agent:main:main" && currentNormalized === "main") ||
+    (incomingNormalized === "main" && currentNormalized === "agent:main:main")
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function buildMessageDedupKey(message: unknown): string | null {
+  if (!message || typeof message !== "object") {
+    return null;
+  }
+  const record = message as Record<string, unknown>;
+  const meta =
+    record.__openclaw && typeof record.__openclaw === "object" && !Array.isArray(record.__openclaw)
+      ? (record.__openclaw as Record<string, unknown>)
+      : null;
+  const explicitId =
+    (typeof meta?.id === "string" && meta.id.trim()) ||
+    (typeof record.id === "string" && record.id.trim()) ||
+    (typeof record.messageId === "string" && record.messageId.trim()) ||
+    (typeof record.toolCallId === "string" && record.toolCallId.trim());
+  if (explicitId) {
+    return `id:${explicitId}`;
+  }
+  const role = typeof record.role === "string" ? record.role.trim().toLowerCase() : "";
+  const text = extractText(message)?.trim() ?? "";
+  const timestamp = typeof record.timestamp === "number" ? record.timestamp : null;
+  if (!role || !text || timestamp == null) {
+    return null;
+  }
+  return `rt:${role}|${timestamp}|${text}`;
+}
+
+function appendSessionMessageIfMissing(host: GatewayHost, message: unknown): boolean {
+  const nextKey = buildMessageDedupKey(message);
+  if (
+    nextKey &&
+    host.chatMessages.some((existing) => {
+      const existingKey = buildMessageDedupKey(existing);
+      return existingKey === nextKey;
+    })
+  ) {
+    return false;
+  }
+  host.chatMessages = [...host.chatMessages, message];
+  return true;
 }
 
 function clearChatLifecycleFallbackTimer(host: GatewayHost) {
@@ -339,6 +404,7 @@ export function connectGateway(host: GatewayHost, options?: ConnectGatewayOption
         );
       }
       void subscribeSessions(host as unknown as OpenClawApp);
+      void subscribeSessionMessages(host as unknown as OpenClawApp, host.sessionKey);
       void loadAssistantIdentity(host as unknown as OpenClawApp);
       void loadAgents(host as unknown as OpenClawApp);
       void loadHealthState(host as unknown as OpenClawApp);
@@ -486,6 +552,18 @@ function handleGatewayEventUnsafe(host: GatewayHost, evt: GatewayEventFrame) {
 
   if (evt.event === "chat") {
     handleChatGatewayEvent(host, evt.payload as ChatEventPayload | undefined);
+    return;
+  }
+
+  if (evt.event === "session.message") {
+    const payload = evt.payload as { sessionKey?: unknown; message?: unknown } | undefined;
+    const sessionKey = typeof payload?.sessionKey === "string" ? payload.sessionKey : "";
+    if (!sessionKey || !matchesCurrentSessionKey(sessionKey, host.sessionKey)) {
+      return;
+    }
+    if (payload?.message) {
+      appendSessionMessageIfMissing(host, payload.message);
+    }
     return;
   }
 

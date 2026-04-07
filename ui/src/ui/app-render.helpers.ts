@@ -14,6 +14,7 @@ import {
 import { refreshVisibleToolsEffectiveForCurrentSession } from "./controllers/agents.ts";
 import { ChatState, loadChatHistory } from "./controllers/chat.ts";
 import { loadSessions } from "./controllers/sessions.ts";
+import { subscribeSessionMessages, unsubscribeSessionMessages } from "./controllers/sessions.ts";
 import { icons } from "./icons.ts";
 import { iconForTab, pathForTab, titleForTab, type Tab } from "./navigation.ts";
 import type { ThemeTransitionContext } from "./theme-transition.ts";
@@ -613,6 +614,7 @@ async function createAndSwitchSession(
 }
 
 export function switchChatSession(state: AppViewState, nextSessionKey: string) {
+  const previousSessionKey = state.sessionKey;
   state.sessionKey = nextSessionKey;
   state.chatMessage = "";
   state.chatStream = null;
@@ -637,6 +639,8 @@ export function switchChatSession(state: AppViewState, nextSessionKey: string) {
     sessionKey: nextSessionKey,
     lastActiveSessionKey: nextSessionKey,
   });
+  void unsubscribeSessionMessages(state as unknown as Parameters<typeof unsubscribeSessionMessages>[0], previousSessionKey);
+  void subscribeSessionMessages(state as unknown as Parameters<typeof subscribeSessionMessages>[0], nextSessionKey);
   void state.loadAssistantIdentity();
   syncUrlWithSessionKey(
     state as unknown as Parameters<typeof syncUrlWithSessionKey>[0],

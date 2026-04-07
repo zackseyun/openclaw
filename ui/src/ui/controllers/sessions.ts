@@ -29,6 +29,42 @@ export async function subscribeSessions(state: SessionsState) {
   }
 }
 
+export async function subscribeSessionMessages(
+  state: SessionsState & { sessionKey?: string },
+  key?: string,
+) {
+  if (!state.client || !state.connected) {
+    return;
+  }
+  const sessionKey = (key ?? state.sessionKey ?? "").trim();
+  if (!sessionKey) {
+    return;
+  }
+  try {
+    await state.client.request("sessions.messages.subscribe", { key: sessionKey });
+  } catch (err) {
+    state.sessionsError = String(err);
+  }
+}
+
+export async function unsubscribeSessionMessages(
+  state: SessionsState & { sessionKey?: string },
+  key?: string,
+) {
+  if (!state.client || !state.connected) {
+    return;
+  }
+  const sessionKey = (key ?? state.sessionKey ?? "").trim();
+  if (!sessionKey) {
+    return;
+  }
+  try {
+    await state.client.request("sessions.messages.unsubscribe", { key: sessionKey });
+  } catch {
+    // Best effort only.
+  }
+}
+
 export async function loadSessions(
   state: SessionsState,
   overrides?: {
