@@ -2021,6 +2021,18 @@ describe("runReplyAgent transient HTTP retry", () => {
 
   it("retries with escalating backoff on rate-limit errors before succeeding", async () => {
     vi.useFakeTimers();
+    const runId = "00000000-0000-0000-0000-000000000099";
+    const randomSpy = vi.spyOn(crypto, "randomUUID").mockReturnValue(runId);
+    const assistantTexts: string[] = [];
+    const unsubscribe = onAgentEvent((evt) => {
+      if (evt.runId !== runId || evt.stream !== "assistant") {
+        return;
+      }
+      const text = evt.data?.text;
+      if (typeof text === "string") {
+        assistantTexts.push(text);
+      }
+    });
     runEmbeddedPiAgentMock
       .mockRejectedValueOnce(new Error("429 Rate limit exceeded"))
       .mockRejectedValueOnce(new Error("rate limit exceeded, retry after 5 seconds"))
@@ -2085,12 +2097,16 @@ describe("runReplyAgent transient HTTP retry", () => {
     await vi.advanceTimersByTimeAsync(2_500);
     await vi.advanceTimersByTimeAsync(5_000);
     const result = await runPromise;
+    unsubscribe();
+    randomSpy.mockRestore();
 
     expect(runEmbeddedPiAgentMock).toHaveBeenCalledTimes(3);
     expect(runtimeErrorMock).toHaveBeenCalledWith(
       expect.stringContaining("Rate limited before reply"),
     );
-    expect(runtimeErrorMock).toHaveBeenCalledWith(expect.stringContaining("Retrying 2/3 in 5000ms"));
+    expect(runtimeErrorMock).toHaveBeenCalledWith(expect.stringContaining("Retrying 2/4 in 5000ms"));
+    expect(assistantTexts).toContain("⏳ API rate limit hit — retrying 1/4 in 3s…");
+    expect(assistantTexts).toContain("⏳ API rate limit hit — retrying 2/4 in 5s…");
 
     const payload = Array.isArray(result) ? result[0] : result;
     expect(payload?.text).toContain("Recovered after rate limit");

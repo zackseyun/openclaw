@@ -302,7 +302,7 @@ export async function runAgentTurnWithFallback(params: {
   resolvedVerboseLevel: VerboseLevel;
 }): Promise<AgentRunLoopResult> {
   const TRANSIENT_HTTP_RETRY_DELAY_MS = 2_500;
-  const RATE_LIMIT_RETRY_DELAYS_MS = [2_500, 5_000, 10_000] as const;
+  const RATE_LIMIT_RETRY_DELAYS_MS = [2_500, 5_000, 10_000, 20_000] as const;
   let didLogHeartbeatStrip = false;
   let autoCompactionCount = 0;
   // Track payloads sent directly (not via pipeline) during tool flush to avoid duplicates.
@@ -1042,6 +1042,13 @@ export async function runAgentTurnWithFallback(params: {
             ? Math.max(configuredDelay, retryAfterMs)
             : configuredDelay;
         rateLimitRetryCount += 1;
+        emitAgentEvent({
+          runId,
+          stream: "assistant",
+          data: {
+            text: `⏳ API rate limit hit — retrying ${rateLimitRetryCount}/${RATE_LIMIT_RETRY_DELAYS_MS.length} in ${Math.ceil(delayMs / 1000)}s…`,
+          },
+        });
         defaultRuntime.error(
           `Rate limited before reply (${message}). Retrying ${rateLimitRetryCount}/${RATE_LIMIT_RETRY_DELAYS_MS.length} in ${delayMs}ms.`,
         );
