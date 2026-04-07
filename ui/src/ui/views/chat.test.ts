@@ -1317,4 +1317,42 @@ describe("chat view", () => {
     expect(labels).toContain("Deep Chat (alpha) / main · named-main");
     expect(labels).toContain("Coding (beta) / main");
   });
+
+  it("prefers derived titles for unlabeled sessions in the session picker", () => {
+    const { state } = createChatHeaderState({ omitSessionFromList: true });
+    state.sessionKey = "agent:main:dashboard:test-summary";
+    state.settings.sessionKey = state.sessionKey;
+    state.agentsList = {
+      defaultId: "main",
+      mainKey: "agent:main:main",
+      scope: "all",
+      agents: [{ id: "main", name: "Main" }],
+    };
+    state.sessionsResult = {
+      ts: 0,
+      path: "",
+      count: 1,
+      defaults: { modelProvider: "openai", model: "gpt-5", contextTokens: null },
+      sessions: [
+        {
+          key: "agent:main:dashboard:test-summary",
+          kind: "direct",
+          updatedAt: null,
+          displayName: "dashboard:test-summary",
+          derivedTitle: "Investigating thread-title rewrites",
+        },
+      ],
+    };
+
+    const container = document.createElement("div");
+    render(renderChatSessionSelect(state), container);
+
+    const [sessionSelect] = Array.from(container.querySelectorAll<HTMLSelectElement>("select"));
+    const labels = Array.from(sessionSelect?.querySelectorAll("option") ?? []).map((option) =>
+      option.textContent?.trim(),
+    );
+
+    expect(labels).toContain("Investigating thread-title rewrites");
+    expect(labels).not.toContain("dashboard:test-summary");
+  });
 });

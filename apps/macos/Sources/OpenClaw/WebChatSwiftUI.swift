@@ -51,6 +51,7 @@ struct MacGatewayChatTransport: OpenClawChatTransport {
         var params: [String: AnyCodable] = [
             "includeGlobal": AnyCodable(true),
             "includeUnknown": AnyCodable(false),
+            "includeDerivedTitles": AnyCodable(true),
         ]
         if let limit {
             params["limit"] = AnyCodable(limit)

@@ -138,9 +138,16 @@ function filterRows(rows: GatewaySessionRow[], query: string): GatewaySessionRow
   return rows.filter((row) => {
     const key = (row.key ?? "").toLowerCase();
     const label = (row.label ?? "").toLowerCase();
+    const derivedTitle = (row.derivedTitle ?? "").toLowerCase();
     const kind = (row.kind ?? "").toLowerCase();
     const displayName = (row.displayName ?? "").toLowerCase();
-    return key.includes(q) || label.includes(q) || kind.includes(q) || displayName.includes(q);
+    return (
+      key.includes(q) ||
+      label.includes(q) ||
+      derivedTitle.includes(q) ||
+      kind.includes(q) ||
+      displayName.includes(q)
+    );
   });
 }
 
@@ -434,9 +441,11 @@ function renderRow(
   const reasoning = row.reasoningLevel ?? "";
   const reasoningLevels = withCurrentOption(REASONING_LEVELS, reasoning);
   const displayName =
-    typeof row.displayName === "string" && row.displayName.trim().length > 0
-      ? row.displayName.trim()
-      : null;
+    typeof row.derivedTitle === "string" && row.derivedTitle.trim().length > 0
+      ? row.derivedTitle.trim()
+      : typeof row.displayName === "string" && row.displayName.trim().length > 0
+        ? row.displayName.trim()
+        : null;
   const showDisplayName = Boolean(
     displayName &&
     displayName !== row.key &&

@@ -8,7 +8,9 @@ struct GatewaySessionDefaultsRecord: Codable {
 
 struct GatewaySessionEntryRecord: Codable {
     let key: String
+    let label: String?
     let displayName: String?
+    let derivedTitle: String?
     let provider: String?
     let subject: String?
     let room: String?
@@ -70,7 +72,9 @@ struct SessionRow: Identifiable {
     let id: String
     let key: String
     let kind: SessionKind
+    let manualLabel: String?
     let displayName: String?
+    let derivedTitle: String?
     let provider: String?
     let subject: String?
     let room: String?
@@ -84,12 +88,52 @@ struct SessionRow: Identifiable {
     let tokens: SessionTokenStats
     let model: String?
 
+    init(
+        id: String,
+        key: String,
+        kind: SessionKind,
+        manualLabel: String? = nil,
+        displayName: String? = nil,
+        derivedTitle: String? = nil,
+        provider: String? = nil,
+        subject: String? = nil,
+        room: String? = nil,
+        space: String? = nil,
+        updatedAt: Date? = nil,
+        sessionId: String? = nil,
+        thinkingLevel: String? = nil,
+        verboseLevel: String? = nil,
+        systemSent: Bool,
+        abortedLastRun: Bool,
+        tokens: SessionTokenStats,
+        model: String? = nil)
+    {
+        self.id = id
+        self.key = key
+        self.kind = kind
+        self.manualLabel = manualLabel
+        self.displayName = displayName
+        self.derivedTitle = derivedTitle
+        self.provider = provider
+        self.subject = subject
+        self.room = room
+        self.space = space
+        self.updatedAt = updatedAt
+        self.sessionId = sessionId
+        self.thinkingLevel = thinkingLevel
+        self.verboseLevel = verboseLevel
+        self.systemSent = systemSent
+        self.abortedLastRun = abortedLastRun
+        self.tokens = tokens
+        self.model = model
+    }
+
     var ageText: String {
         relativeAge(from: self.updatedAt)
     }
 
     var label: String {
-        self.displayName ?? self.key
+        self.manualLabel ?? self.derivedTitle ?? self.displayName ?? self.key
     }
 
     var flagLabels: [String] {
@@ -145,7 +189,9 @@ extension SessionRow {
                 id: "direct-1",
                 key: "user@example.com",
                 kind: .direct,
+                manualLabel: nil,
                 displayName: nil,
+                derivedTitle: nil,
                 provider: nil,
                 subject: nil,
                 room: nil,
@@ -162,7 +208,9 @@ extension SessionRow {
                 id: "group-1",
                 key: "discord:channel:release-squad",
                 kind: .group,
+                manualLabel: nil,
                 displayName: "discord:#release-squad",
+                derivedTitle: nil,
                 provider: "discord",
                 subject: nil,
                 room: "#release-squad",
@@ -179,7 +227,9 @@ extension SessionRow {
                 id: "global",
                 key: "global",
                 kind: .global,
+                manualLabel: nil,
                 displayName: nil,
+                derivedTitle: nil,
                 provider: nil,
                 subject: nil,
                 room: nil,
@@ -263,6 +313,7 @@ enum SessionLoader {
         var params: [String: AnyHashable] = [
             "includeGlobal": AnyHashable(includeGlobal),
             "includeUnknown": AnyHashable(includeUnknown),
+            "includeDerivedTitles": AnyHashable(true),
         ]
         if let activeMinutes { params["activeMinutes"] = AnyHashable(activeMinutes) }
         if let limit { params["limit"] = AnyHashable(limit) }
@@ -302,7 +353,9 @@ enum SessionLoader {
                 id: entry.key,
                 key: entry.key,
                 kind: SessionKind.from(key: entry.key),
+                manualLabel: entry.label,
                 displayName: entry.displayName,
+                derivedTitle: entry.derivedTitle,
                 provider: entry.provider,
                 subject: entry.subject,
                 room: entry.room,

@@ -136,7 +136,7 @@ struct OpenClawChatComposer: View {
                 set: { next in self.viewModel.switchSession(to: next) }))
         {
             ForEach(self.viewModel.sessionChoices, id: \.key) { session in
-                Text(session.displayName ?? session.key)
+                Text(session.titleText)
                     .font(.system(.caption, design: .monospaced))
                     .tag(session.key)
             }

@@ -179,8 +179,9 @@ export function renderChatSessionSelect(state: AppViewState) {
           const currentRow = state.sessionsResult?.sessions?.find(
             (row) => row.key === state.sessionKey,
           );
-          const currentLabel =
-            currentRow?.label?.trim() || currentRow?.displayName?.trim() || state.sessionKey;
+          const currentLabel = currentRow
+            ? resolveSessionDisplayName(state.sessionKey, currentRow)
+            : state.sessionKey;
           void createAndSwitchSession(state, {
             parentSessionKey: state.sessionKey,
             label: `Fork of ${currentLabel}`,
@@ -488,8 +489,9 @@ export function renderChatMobileToggle(state: AppViewState) {
                 const currentRow = state.sessionsResult?.sessions?.find(
                   (row) => row.key === state.sessionKey,
                 );
-                const currentLabel =
-                  currentRow?.label?.trim() || currentRow?.displayName?.trim() || state.sessionKey;
+                const currentLabel = currentRow
+                  ? resolveSessionDisplayName(state.sessionKey, currentRow)
+                  : state.sessionKey;
                 void createAndSwitchSession(state, {
                   parentSessionKey: state.sessionKey,
                   label: `Fork of ${currentLabel}`,
@@ -787,6 +789,7 @@ export function resolveSessionDisplayName(
   row?: SessionsListResult["sessions"][number],
 ): string {
   const label = row?.label?.trim() || "";
+  const derivedTitle = row?.derivedTitle?.trim() || "";
   const displayName = row?.displayName?.trim() || "";
   const { prefix, fallbackName } = parseSessionKey(key);
 
@@ -800,6 +803,9 @@ export function resolveSessionDisplayName(
 
   if (label && label !== key) {
     return applyTypedPrefix(label);
+  }
+  if (derivedTitle && derivedTitle !== key) {
+    return applyTypedPrefix(derivedTitle);
   }
   if (displayName && displayName !== key) {
     return applyTypedPrefix(displayName);
@@ -1053,8 +1059,13 @@ function resolveSessionScopedOptionLabel(
   }
 
   const label = row.label?.trim() || "";
+  const derivedTitle = row.derivedTitle?.trim() || "";
   const displayName = row.displayName?.trim() || "";
-  if ((label && label !== key) || (displayName && displayName !== key)) {
+  if (
+    (label && label !== key) ||
+    (derivedTitle && derivedTitle !== key) ||
+    (displayName && displayName !== key)
+  ) {
     return resolveSessionDisplayName(key, row);
   }
 

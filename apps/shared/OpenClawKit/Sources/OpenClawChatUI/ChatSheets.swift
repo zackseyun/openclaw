@@ -14,7 +14,7 @@ struct ChatSessionsSheet: View {
                     self.dismiss()
                 } label: {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(session.displayName ?? session.key)
+                        Text(session.titleText)
                             .font(.system(.body, design: .monospaced))
                             .lineLimit(1)
                         if let updatedAt = session.updatedAt, updatedAt > 0 {

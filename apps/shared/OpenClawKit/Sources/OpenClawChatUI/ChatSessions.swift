@@ -48,7 +48,9 @@ public struct OpenClawChatSessionEntry: Codable, Identifiable, Sendable, Hashabl
 
     public let key: String
     public let kind: String?
+    public let label: String?
     public let displayName: String?
+    public let derivedTitle: String?
     public let surface: String?
     public let subject: String?
     public let room: String?
@@ -68,6 +70,62 @@ public struct OpenClawChatSessionEntry: Codable, Identifiable, Sendable, Hashabl
     public let modelProvider: String?
     public let model: String?
     public let contextTokens: Int?
+
+    public init(
+        key: String,
+        kind: String?,
+        label: String? = nil,
+        displayName: String? = nil,
+        derivedTitle: String? = nil,
+        surface: String? = nil,
+        subject: String? = nil,
+        room: String? = nil,
+        space: String? = nil,
+        updatedAt: Double? = nil,
+        sessionId: String? = nil,
+        systemSent: Bool? = nil,
+        abortedLastRun: Bool? = nil,
+        thinkingLevel: String? = nil,
+        verboseLevel: String? = nil,
+        inputTokens: Int? = nil,
+        outputTokens: Int? = nil,
+        totalTokens: Int? = nil,
+        modelProvider: String? = nil,
+        model: String? = nil,
+        contextTokens: Int? = nil)
+    {
+        self.key = key
+        self.kind = kind
+        self.label = label
+        self.displayName = displayName
+        self.derivedTitle = derivedTitle
+        self.surface = surface
+        self.subject = subject
+        self.room = room
+        self.space = space
+        self.updatedAt = updatedAt
+        self.sessionId = sessionId
+        self.systemSent = systemSent
+        self.abortedLastRun = abortedLastRun
+        self.thinkingLevel = thinkingLevel
+        self.verboseLevel = verboseLevel
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+        self.totalTokens = totalTokens
+        self.modelProvider = modelProvider
+        self.model = model
+        self.contextTokens = contextTokens
+    }
+
+    public var titleText: String {
+        let manual = self.label?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !manual.isEmpty { return manual }
+        let derived = self.derivedTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !derived.isEmpty { return derived }
+        let display = self.displayName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !display.isEmpty { return display }
+        return self.key
+    }
 }
 
 public struct OpenClawChatSessionsListResponse: Codable, Sendable {

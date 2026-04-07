@@ -172,10 +172,27 @@ function truncateTitle(text: string, maxLen: number): string {
 
 export function deriveSessionTitle(
   entry: SessionEntry | undefined,
-  firstUserMessage?: string | null,
+  fields?: {
+    firstUserMessage?: string | null;
+    lastMessagePreview?: string | null;
+  },
 ): string | undefined {
   if (!entry) {
     return undefined;
+  }
+
+  if (entry.label?.trim()) {
+    return entry.label.trim();
+  }
+
+  if (fields?.lastMessagePreview?.trim()) {
+    const normalized = fields.lastMessagePreview.replace(/\s+/g, " ").trim();
+    return truncateTitle(normalized, DERIVED_TITLE_MAX_LEN);
+  }
+
+  if (fields?.firstUserMessage?.trim()) {
+    const normalized = fields.firstUserMessage.replace(/\s+/g, " ").trim();
+    return truncateTitle(normalized, DERIVED_TITLE_MAX_LEN);
   }
 
   if (entry.displayName?.trim()) {
@@ -184,11 +201,6 @@ export function deriveSessionTitle(
 
   if (entry.subject?.trim()) {
     return entry.subject.trim();
-  }
-
-  if (firstUserMessage?.trim()) {
-    const normalized = firstUserMessage.replace(/\s+/g, " ").trim();
-    return truncateTitle(normalized, DERIVED_TITLE_MAX_LEN);
   }
 
   if (entry.sessionId) {
@@ -1245,7 +1257,7 @@ export function buildGatewaySessionRow(params: {
       sessionAgentId,
     );
     if (params.includeDerivedTitles) {
-      derivedTitle = deriveSessionTitle(entry, fields.firstUserMessage);
+      derivedTitle = deriveSessionTitle(entry, fields);
     }
     if (params.includeLastMessage && fields.lastMessagePreview) {
       lastMessagePreview = fields.lastMessagePreview;
@@ -1406,7 +1418,7 @@ export function listSessionsFromStore(params: {
 
   if (search) {
     sessions = sessions.filter((s) => {
-      const fields = [s.displayName, s.label, s.subject, s.sessionId, s.key];
+      const fields = [s.displayName, s.derivedTitle, s.label, s.subject, s.sessionId, s.key];
       return fields.some((f) => typeof f === "string" && f.toLowerCase().includes(search));
     });
   }

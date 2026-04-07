@@ -829,7 +829,46 @@ describe("deriveSessionTitle", () => {
     expect(deriveSessionTitle(undefined)).toBeUndefined();
   });
 
-  test("prefers displayName when set", () => {
+  test("prefers manual label when set", () => {
+    const entry = {
+      sessionId: "abc123",
+      updatedAt: Date.now(),
+      label: "Pinned Title",
+      displayName: "My Custom Session",
+      subject: "Group Chat",
+    } as SessionEntry;
+    expect(deriveSessionTitle(entry)).toBe("Pinned Title");
+  });
+
+  test("uses rolling last-message preview when session has no manual label", () => {
+    const entry = {
+      sessionId: "abc123",
+      updatedAt: Date.now(),
+      displayName: "My Custom Session",
+      subject: "Group Chat",
+    } as SessionEntry;
+    expect(
+      deriveSessionTitle(entry, {
+        lastMessagePreview: "Latest follow-up about the Codex chain smoke test",
+      }),
+    ).toBe("Latest follow-up about the Codex chain smoke test");
+  });
+
+  test("falls back to first user message when no rolling preview exists", () => {
+    const entry = {
+      sessionId: "abc123",
+      updatedAt: Date.now(),
+      displayName: "My Custom Session",
+      subject: "Group Chat",
+    } as SessionEntry;
+    expect(
+      deriveSessionTitle(entry, {
+        firstUserMessage: "Hello, how are you?",
+      }),
+    ).toBe("Hello, how are you?");
+  });
+
+  test("falls back to displayName when transcript-derived title is unavailable", () => {
     const entry = {
       sessionId: "abc123",
       updatedAt: Date.now(),
@@ -848,14 +887,6 @@ describe("deriveSessionTitle", () => {
     expect(deriveSessionTitle(entry)).toBe("Dev Team Chat");
   });
 
-  test("uses first user message when displayName and subject missing", () => {
-    const entry = {
-      sessionId: "abc123",
-      updatedAt: Date.now(),
-    } as SessionEntry;
-    expect(deriveSessionTitle(entry, "Hello, how are you?")).toBe("Hello, how are you?");
-  });
-
   test("truncates long first user message to 60 chars with ellipsis", () => {
     const entry = {
       sessionId: "abc123",
@@ -863,7 +894,7 @@ describe("deriveSessionTitle", () => {
     } as SessionEntry;
     const longMsg =
       "This is a very long message that exceeds sixty characters and should be truncated appropriately";
-    const result = deriveSessionTitle(entry, longMsg);
+    const result = deriveSessionTitle(entry, { firstUserMessage: longMsg });
     expect(result).toBeDefined();
     expect(result!.length).toBeLessThanOrEqual(60);
     expect(result!.endsWith("…")).toBe(true);
@@ -875,7 +906,7 @@ describe("deriveSessionTitle", () => {
       updatedAt: Date.now(),
     } as SessionEntry;
     const longMsg = "This message has many words and should be truncated at a word boundary nicely";
-    const result = deriveSessionTitle(entry, longMsg);
+    const result = deriveSessionTitle(entry, { firstUserMessage: longMsg });
     expect(result).toBeDefined();
     expect(result!.endsWith("…")).toBe(true);
     expect(result!.includes("  ")).toBe(false);
