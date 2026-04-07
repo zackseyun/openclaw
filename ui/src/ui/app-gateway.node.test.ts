@@ -146,6 +146,8 @@ function createHost() {
     chatStreamStartedAt: null,
     chatRunId: null,
     chatSending: false,
+    chatLifecycleFallbackTimer: null,
+    completedChatRunIds: new Set<string>(),
     toolStreamById: new Map(),
     toolStreamOrder: [],
     toolStreamSyncTimer: null,
@@ -637,6 +639,111 @@ describe("connectGateway", () => {
     });
 
     expect(loadChatHistoryMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("updates chat stream from assistant agent events for the active run", () => {
+    const host = createHost();
+    host.chatRunId = "client-run-1";
+
+    connectGateway(host);
+    const client = gatewayClientInstances[0];
+    expect(client).toBeDefined();
+
+    client.emitEvent({
+      event: "agent",
+      payload: {
+        runId: "client-run-1",
+        seq: 1,
+        stream: "assistant",
+        ts: 123,
+        sessionKey: "main",
+        data: { text: "Streaming answer" },
+      },
+    });
+
+    expect(host.chatStream).toBe("Streaming answer");
+    expect(host.chatStreamStartedAt).toBe(123);
+  });
+
+  it("finalizes from assistant stream when lifecycle ends without chat.final", async () => {
+    vi.useFakeTimers();
+    const host = createHost();
+    host.chatRunId = "client-run-2";
+    host.chatStream = "Recovered final answer";
+    host.chatStreamStartedAt = 100;
+
+    connectGateway(host);
+    const client = gatewayClientInstances[0];
+    expect(client).toBeDefined();
+
+    client.emitEvent({
+      event: "agent",
+      payload: {
+        runId: "client-run-2",
+        seq: 2,
+        stream: "lifecycle",
+        ts: 200,
+        sessionKey: "main",
+        data: { phase: "end" },
+      },
+    });
+
+    vi.advanceTimersByTime(401);
+    await Promise.resolve();
+
+    expect(host.chatRunId).toBeNull();
+    expect(host.chatStream).toBeNull();
+    expect(host.chatMessages).toEqual([
+      expect.objectContaining({
+        role: "assistant",
+        content: [{ type: "text", text: "Recovered final answer" }],
+      }),
+    ]);
+    expect(loadChatHistoryMock).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("ignores late chat finals after lifecycle fallback already finalized the run", () => {
+    vi.useFakeTimers();
+    const host = createHost();
+    host.chatRunId = "client-run-3";
+    host.chatStream = "Recovered final answer";
+    host.chatStreamStartedAt = 100;
+
+    connectGateway(host);
+    const client = gatewayClientInstances[0];
+    expect(client).toBeDefined();
+
+    client.emitEvent({
+      event: "agent",
+      payload: {
+        runId: "client-run-3",
+        seq: 2,
+        stream: "lifecycle",
+        ts: 200,
+        sessionKey: "main",
+        data: { phase: "end" },
+      },
+    });
+
+    vi.advanceTimersByTime(401);
+
+    client.emitEvent({
+      event: "chat",
+      payload: {
+        runId: "client-run-3",
+        sessionKey: "main",
+        state: "final",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "Late duplicate final" }],
+        },
+      },
+    });
+
+    expect(host.chatMessages).toHaveLength(1);
+    expect(loadChatHistoryMock).not.toHaveBeenCalled();
+    vi.useRealTimers();
   });
 });
 

@@ -616,6 +616,16 @@ export function switchChatSession(state: AppViewState, nextSessionKey: string) {
   state.sessionKey = nextSessionKey;
   state.chatMessage = "";
   state.chatStream = null;
+  if ((state as unknown as { chatLifecycleFallbackTimer?: number | null }).chatLifecycleFallbackTimer != null) {
+    clearTimeout(
+      (state as unknown as { chatLifecycleFallbackTimer: number | null }).chatLifecycleFallbackTimer!,
+    );
+    (state as unknown as { chatLifecycleFallbackTimer: number | null }).chatLifecycleFallbackTimer =
+      null;
+  }
+  (
+    state as unknown as { completedChatRunIds?: Set<string> }
+  ).completedChatRunIds?.clear();
   // P1: Clear queued chat items from the previous session
   (state as unknown as { chatQueue: unknown[] }).chatQueue = [];
   (state as unknown as OpenClawApp).chatStreamStartedAt = null;

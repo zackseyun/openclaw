@@ -79,6 +79,15 @@ export function handleDisconnected(host: LifecycleHost) {
   host.client?.stop();
   host.client = null;
   host.connected = false;
+  const lifecycleHost = host as unknown as {
+    chatLifecycleFallbackTimer?: number | null;
+    completedChatRunIds?: Set<string>;
+  };
+  if (lifecycleHost.chatLifecycleFallbackTimer != null) {
+    clearTimeout(lifecycleHost.chatLifecycleFallbackTimer);
+    lifecycleHost.chatLifecycleFallbackTimer = null;
+  }
+  lifecycleHost.completedChatRunIds?.clear();
   detachThemeListener(host as unknown as Parameters<typeof detachThemeListener>[0]);
   host.topbarObserver?.disconnect();
   host.topbarObserver = null;

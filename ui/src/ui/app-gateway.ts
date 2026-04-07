@@ -83,7 +83,12 @@ type GatewayHost = {
   assistantAgentId: string | null;
   serverVersion: string | null;
   sessionKey: string;
+  chatMessages: unknown[];
+  chatStream: string | null;
+  chatStreamStartedAt: number | null;
   chatRunId: string | null;
+  chatLifecycleFallbackTimer: number | null;
+  completedChatRunIds: Set<string>;
   refreshSessionsAfterChat: Set<string>;
   execApprovalQueue: ExecApprovalRequest[];
   execApprovalError: string | null;
@@ -105,6 +110,94 @@ type GatewayHostWithShutdownMessage = GatewayHost & {
 type ConnectGatewayOptions = {
   reason?: "initial" | "seq-gap";
 };
+
+const CHAT_LIFECYCLE_FALLBACK_DELAY_MS = 400;
+const COMPLETED_CHAT_RUN_CACHE_LIMIT = 64;
+const SILENT_REPLY_PATTERN = /^\s*NO_REPLY\s*$/i;
+
+function isSilentReplyText(text: string): boolean {
+  return SILENT_REPLY_PATTERN.test(text);
+}
+
+function clearChatLifecycleFallbackTimer(host: GatewayHost) {
+  if (host.chatLifecycleFallbackTimer != null) {
+    window.clearTimeout(host.chatLifecycleFallbackTimer);
+    host.chatLifecycleFallbackTimer = null;
+  }
+}
+
+function rememberCompletedChatRun(host: GatewayHost, runId?: string | null) {
+  const trimmed = typeof runId === "string" ? runId.trim() : "";
+  if (!trimmed) {
+    return;
+  }
+  if (host.completedChatRunIds.has(trimmed)) {
+    host.completedChatRunIds.delete(trimmed);
+  }
+  host.completedChatRunIds.add(trimmed);
+  while (host.completedChatRunIds.size > COMPLETED_CHAT_RUN_CACHE_LIMIT) {
+    const oldest = host.completedChatRunIds.values().next().value;
+    if (typeof oldest !== "string" || !oldest) {
+      break;
+    }
+    host.completedChatRunIds.delete(oldest);
+  }
+}
+
+function isCompletedChatRun(host: GatewayHost, runId?: string | null): boolean {
+  const trimmed = typeof runId === "string" ? runId.trim() : "";
+  return trimmed ? host.completedChatRunIds.has(trimmed) : false;
+}
+
+function handleAgentAssistantFallback(host: GatewayHost, payload: AgentEventPayload) {
+  if (!host.chatRunId || payload.runId !== host.chatRunId) {
+    return;
+  }
+  const text = typeof payload.data?.text === "string" ? payload.data.text : "";
+  if (!text || isSilentReplyText(text)) {
+    return;
+  }
+  const current = host.chatStream ?? "";
+  if (!current || text.length >= current.length) {
+    host.chatStream = text;
+    if (host.chatStreamStartedAt == null) {
+      host.chatStreamStartedAt = typeof payload.ts === "number" ? payload.ts : Date.now();
+    }
+  }
+}
+
+function scheduleLifecycleChatFallback(host: GatewayHost, payload: AgentEventPayload) {
+  if (!host.chatRunId || payload.runId !== host.chatRunId || isCompletedChatRun(host, payload.runId)) {
+    return;
+  }
+  clearChatLifecycleFallbackTimer(host);
+  host.chatLifecycleFallbackTimer = window.setTimeout(() => {
+    host.chatLifecycleFallbackTimer = null;
+    if (!host.chatRunId || host.chatRunId !== payload.runId || isCompletedChatRun(host, payload.runId)) {
+      return;
+    }
+
+    const streamedText = host.chatStream?.trim() ?? "";
+    if (streamedText && !isSilentReplyText(streamedText)) {
+      host.chatMessages = [
+        ...host.chatMessages,
+        {
+          role: "assistant",
+          content: [{ type: "text", text: host.chatStream }],
+          timestamp: Date.now(),
+        },
+      ];
+    } else {
+      void loadChatHistory(host as unknown as OpenClawApp);
+    }
+
+    host.chatRunId = null;
+    host.chatStream = null;
+    host.chatStreamStartedAt = null;
+    rememberCompletedChatRun(host, payload.runId);
+    void flushChatQueueForEvent(host as unknown as Parameters<typeof flushChatQueueForEvent>[0]);
+  }, CHAT_LIFECYCLE_FALLBACK_DELAY_MS);
+}
 
 export function resolveControlUiClientVersion(params: {
   gatewayUrl: string;
@@ -317,6 +410,8 @@ function handleTerminalChatEvent(
   if (state !== "final" && state !== "error" && state !== "aborted") {
     return false;
   }
+  clearChatLifecycleFallbackTimer(host);
+  rememberCompletedChatRun(host, payload?.runId);
   // Check if tool events were seen before resetting (resetToolStream clears toolStreamOrder).
   const toolHost = host as unknown as Parameters<typeof resetToolStream>[0];
   const hadToolEvents = toolHost.toolStreamOrder.length > 0;
@@ -345,6 +440,9 @@ function handleTerminalChatEvent(
 }
 
 function handleChatGatewayEvent(host: GatewayHost, payload: ChatEventPayload | undefined) {
+  if (isCompletedChatRun(host, payload?.runId)) {
+    return;
+  }
   if (payload?.sessionKey) {
     setLastActiveSessionKey(
       host as unknown as Parameters<typeof setLastActiveSessionKey>[0],
@@ -371,10 +469,18 @@ function handleGatewayEventUnsafe(host: GatewayHost, evt: GatewayEventFrame) {
     if (host.onboarding) {
       return;
     }
-    handleAgentEvent(
-      host as unknown as Parameters<typeof handleAgentEvent>[0],
-      evt.payload as AgentEventPayload | undefined,
-    );
+    const payload = evt.payload as AgentEventPayload | undefined;
+    if (payload && !isCompletedChatRun(host, payload.runId)) {
+      if (payload.stream === "assistant") {
+        handleAgentAssistantFallback(host, payload);
+      } else if (
+        payload.stream === "lifecycle" &&
+        (payload.data?.phase === "end" || payload.data?.phase === "error")
+      ) {
+        scheduleLifecycleChatFallback(host, payload);
+      }
+    }
+    handleAgentEvent(host as unknown as Parameters<typeof handleAgentEvent>[0], payload);
     return;
   }
 
