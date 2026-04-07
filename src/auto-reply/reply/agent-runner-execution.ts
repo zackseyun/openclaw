@@ -302,6 +302,7 @@ export async function runAgentTurnWithFallback(params: {
   resolvedVerboseLevel: VerboseLevel;
 }): Promise<AgentRunLoopResult> {
   const TRANSIENT_HTTP_RETRY_DELAY_MS = 2_500;
+  const RATE_LIMIT_RETRY_DELAYS_MS = [2_500, 5_000, 10_000] as const;
   let didLogHeartbeatStrip = false;
   let autoCompactionCount = 0;
   // Track payloads sent directly (not via pipeline) during tool flush to avoid duplicates.
@@ -341,6 +342,7 @@ export async function runAgentTurnWithFallback(params: {
   let didResetAfterCompactionFailure = false;
   let didRetryTransientHttpError = false;
   let liveModelSwitchRetries = 0;
+  let rateLimitRetryCount = 0;
   let bootstrapPromptWarningSignaturesSeen = resolveBootstrapWarningSignaturesSeen(
     params.getActiveSessionEntry()?.systemPromptReport,
   );
@@ -411,6 +413,28 @@ export async function runAgentTurnWithFallback(params: {
         }
       });
     };
+  };
+
+  const extractRetryAfterMsFromMessage = (message: string): number | undefined => {
+    const match =
+      /retry(?:ing)?\s+after\s+(\d+)\s*(ms|msec|milliseconds|s|sec|secs|seconds|m|min|mins|minutes)\b/i.exec(
+        message,
+      );
+    if (!match) {
+      return undefined;
+    }
+    const value = Number(match[1]);
+    const unit = match[2]?.toLowerCase() ?? "";
+    if (!Number.isFinite(value) || value <= 0) {
+      return undefined;
+    }
+    if (unit.startsWith("ms")) {
+      return value;
+    }
+    if (unit.startsWith("m")) {
+      return value * 60_000;
+    }
+    return value * 1_000;
   };
 
   while (true) {
@@ -922,6 +946,7 @@ export async function runAgentTurnWithFallback(params: {
       const isCompactionFailure = !isBilling && isCompactionFailureError(message);
       const isSessionCorruption = /function call turn comes immediately after/i.test(message);
       const isRoleOrderingError = /incorrect role information|roles must alternate/i.test(message);
+      const isRateLimit = !isBilling && isRateLimitErrorMessage(message);
       const isTransientHttp = isTransientHttpError(message);
 
       if (
@@ -1005,6 +1030,23 @@ export async function runAgentTurnWithFallback(params: {
         );
         await new Promise<void>((resolve) => {
           setTimeout(resolve, TRANSIENT_HTTP_RETRY_DELAY_MS);
+        });
+        continue;
+      }
+
+      if (isRateLimit && rateLimitRetryCount < RATE_LIMIT_RETRY_DELAYS_MS.length) {
+        const configuredDelay = RATE_LIMIT_RETRY_DELAYS_MS[rateLimitRetryCount];
+        const retryAfterMs = extractRetryAfterMsFromMessage(message);
+        const delayMs =
+          typeof retryAfterMs === "number" && Number.isFinite(retryAfterMs)
+            ? Math.max(configuredDelay, retryAfterMs)
+            : configuredDelay;
+        rateLimitRetryCount += 1;
+        defaultRuntime.error(
+          `Rate limited before reply (${message}). Retrying ${rateLimitRetryCount}/${RATE_LIMIT_RETRY_DELAYS_MS.length} in ${delayMs}ms.`,
+        );
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, delayMs);
         });
         continue;
       }

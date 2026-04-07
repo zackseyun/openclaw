@@ -2018,6 +2018,83 @@ describe("runReplyAgent transient HTTP retry", () => {
     const payload = Array.isArray(result) ? result[0] : result;
     expect(payload?.text).toContain("Recovered response");
   });
+
+  it("retries with escalating backoff on rate-limit errors before succeeding", async () => {
+    vi.useFakeTimers();
+    runEmbeddedPiAgentMock
+      .mockRejectedValueOnce(new Error("429 Rate limit exceeded"))
+      .mockRejectedValueOnce(new Error("rate limit exceeded, retry after 5 seconds"))
+      .mockResolvedValueOnce({
+        payloads: [{ text: "Recovered after rate limit" }],
+        meta: {},
+      });
+
+    const typing = createMockTypingController();
+    const sessionCtx = {
+      Provider: "telegram",
+      MessageSid: "msg",
+    } as unknown as TemplateContext;
+    const resolvedQueue = { mode: "interrupt" } as unknown as QueueSettings;
+    const followupRun = {
+      prompt: "hello",
+      summaryLine: "hello",
+      enqueuedAt: Date.now(),
+      run: {
+        sessionId: "session",
+        sessionKey: "main",
+        messageProvider: "telegram",
+        sessionFile: "/tmp/session.jsonl",
+        workspaceDir: "/tmp",
+        config: {},
+        skillsSnapshot: {},
+        provider: "anthropic",
+        model: "claude",
+        thinkLevel: "low",
+        verboseLevel: "off",
+        elevatedLevel: "off",
+        bashElevated: {
+          enabled: false,
+          allowed: false,
+          defaultLevel: "off",
+        },
+        timeoutMs: 1_000,
+        blockReplyBreak: "message_end",
+      },
+    } as unknown as FollowupRun;
+
+    const runPromise = runReplyAgent({
+      commandBody: "hello",
+      followupRun,
+      queueKey: "main",
+      resolvedQueue,
+      shouldSteer: false,
+      shouldFollowup: false,
+      isActive: false,
+      isStreaming: false,
+      typing,
+      sessionCtx,
+      defaultModel: "anthropic/claude-opus-4-5",
+      resolvedVerboseLevel: "off",
+      isNewSession: false,
+      blockStreamingEnabled: false,
+      resolvedBlockStreamingBreak: "message_end",
+      shouldInjectGroupIntro: false,
+      typingMode: "instant",
+    });
+
+    await vi.advanceTimersByTimeAsync(2_500);
+    await vi.advanceTimersByTimeAsync(5_000);
+    const result = await runPromise;
+
+    expect(runEmbeddedPiAgentMock).toHaveBeenCalledTimes(3);
+    expect(runtimeErrorMock).toHaveBeenCalledWith(
+      expect.stringContaining("Rate limited before reply"),
+    );
+    expect(runtimeErrorMock).toHaveBeenCalledWith(expect.stringContaining("Retrying 2/3 in 5000ms"));
+
+    const payload = Array.isArray(result) ? result[0] : result;
+    expect(payload?.text).toContain("Recovered after rate limit");
+  });
 });
 
 describe("runReplyAgent billing error classification", () => {
