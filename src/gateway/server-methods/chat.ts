@@ -1499,6 +1499,7 @@ function createChatAbortOps(context: GatewayRequestContext): ChatAbortOps {
     agentRunSeq: context.agentRunSeq,
     broadcast: context.broadcast,
     nodeSendToSession: context.nodeSendToSession,
+    logGateway: context.logGateway,
   };
 }
 
@@ -2102,18 +2103,39 @@ export const chatHandlers: GatewayRequestHandlers = {
       }
     }
 
+    // [chat-debug] log every chat.send arrival with state context so we can
+    // correlate UX bugs (flicker / disappear / re-render) with what happened
+    // server-side. Easy to grep: "chat-debug" prefix on every line.
+    const inFlightSnapshot: Array<{
+      runId: string;
+      sessionKey: string;
+      ageMs: number;
+      sameSession: boolean;
+    }> = [];
+    const nowDebugMs = Date.now();
+    for (const [otherRunId, other] of context.chatAbortControllers) {
+      inFlightSnapshot.push({
+        runId: otherRunId,
+        sessionKey: other.sessionKey,
+        ageMs: nowDebugMs - other.startedAtMs,
+        sameSession: other.sessionKey === rawSessionKey,
+      });
+    }
+    const sameSessionInFlight = inFlightSnapshot.filter((r) => r.sameSession);
+    context.logGateway.info(
+      `[chat-debug] arrive runId=${clientRunId} sessionKey=${rawSessionKey} ` +
+        `inFlightTotal=${inFlightSnapshot.length} sameSession=${sameSessionInFlight.length} ` +
+        `sameSessionRuns=${JSON.stringify(
+          sameSessionInFlight.map((r) => ({ runId: r.runId, ageMs: r.ageMs })),
+        )}`,
+    );
+
     // Barge-in: if any other run on this sessionKey is still in flight, abort it
     // before starting the new turn. Same-runId retransmits and same-message
     // dedupe hits are handled above, so this only supersedes genuinely newer turns.
-    let hasOtherRunOnSession = false;
-    for (const [otherRunId, other] of context.chatAbortControllers) {
-      if (otherRunId !== clientRunId && other.sessionKey === rawSessionKey) {
-        hasOtherRunOnSession = true;
-        break;
-      }
-    }
-    if (hasOtherRunOnSession) {
-      abortChatRunsForSessionKeyWithPartials({
+    if (sameSessionInFlight.length > 0) {
+      const supersedeStart = Date.now();
+      const aborted = abortChatRunsForSessionKeyWithPartials({
         context,
         ops: createChatAbortOps(context),
         sessionKey: rawSessionKey,
@@ -2121,6 +2143,17 @@ export const chatHandlers: GatewayRequestHandlers = {
         stopReason: "superseded-by-new-message",
         requester: resolveChatAbortRequester(client),
       });
+      context.logGateway.info(
+        `[chat-debug] supersede fired runId=${clientRunId} sessionKey=${rawSessionKey} ` +
+          `abortedCount=${aborted.runIds?.length ?? 0} ` +
+          `abortedRunIds=${JSON.stringify(aborted.runIds ?? [])} ` +
+          `unauthorized=${aborted.unauthorized === true} ` +
+          `durationMs=${Date.now() - supersedeStart}`,
+      );
+    } else {
+      context.logGateway.info(
+        `[chat-debug] supersede skipped runId=${clientRunId} sessionKey=${rawSessionKey} reason=no-other-runs`,
+      );
     }
     const explicitOriginTargetsPlugin = explicitOriginTargetsPluginBinding(
       explicitOriginResult.value,
@@ -2813,6 +2846,21 @@ export const chatHandlers: GatewayRequestHandlers = {
           });
         })
         .finally(() => {
+          const entry = context.chatAbortControllers.get(clientRunId);
+          const ageMs = entry ? Date.now() - entry.startedAtMs : 0;
+          const wasAborted = entry ? entry.controller.signal.aborted : false;
+          const abortReasonText = (() => {
+            if (!entry || !entry.controller.signal.aborted) return "none";
+            const reason = (entry.controller.signal as AbortSignal & { reason?: unknown }).reason;
+            if (reason === undefined || reason === null) return "(no reason)";
+            if (typeof reason === "string") return reason;
+            if (reason instanceof Error) return `${reason.name}:${reason.message}`;
+            return String(reason);
+          })();
+          context.logGateway.info(
+            `[chat-debug] dispatch finalized runId=${clientRunId} ageMs=${ageMs} ` +
+              `wasAborted=${wasAborted} abortReason=${JSON.stringify(abortReasonText)}`,
+          );
           activeRunAbort.cleanup();
           context.removeChatRun(clientRunId, clientRunId, sessionKey);
         });

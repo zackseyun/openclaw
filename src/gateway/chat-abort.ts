@@ -121,6 +121,9 @@ export type ChatAbortOps = {
   agentRunSeq: Map<string, number>;
   broadcast: (event: string, payload: unknown, opts?: { dropIfSlow?: boolean }) => void;
   nodeSendToSession: (sessionKey: string, event: string, payload: unknown) => void;
+  // Optional gateway logger for [chat-debug] traces. Optional so existing
+  // callers that don't supply one still typecheck.
+  logGateway?: { info?: (msg: string) => void };
 };
 
 function broadcastChatAborted(
@@ -171,7 +174,13 @@ export function abortChatRunById(
   const bufferedText = ops.chatRunBuffers.get(runId);
   const partialText = bufferedText && bufferedText.trim() ? bufferedText : undefined;
   ops.chatAbortedRuns.set(runId, Date.now());
-  active.controller.abort();
+  // [chat-debug] log the abort event with caller-provided stopReason so we can
+  // trace which abort path fired (supersede / stop-command / rpc / timeout).
+  // This is the only place that calls controller.abort() for chat runs.
+  ops.logGateway?.info?.(
+    `[chat-debug] abort runId=${runId} sessionKey=${sessionKey} stopReason=${JSON.stringify(stopReason ?? "(none)")} hasPartial=${Boolean(partialText)}`,
+  );
+  active.controller.abort(stopReason ?? "chat-abort");
   ops.chatAbortControllers.delete(runId);
   ops.chatRunBuffers.delete(runId);
   ops.chatDeltaSentAt.delete(runId);
