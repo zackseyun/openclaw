@@ -14,6 +14,11 @@ type ScrollHost = {
   chatUserNearBottom: boolean;
   chatHeaderControlsHidden: boolean;
   chatNewMessagesBelow: boolean;
+  // Sticky flag: once the user explicitly scrolls up (wheel up, drag up,
+  // PageUp, etc.), block all auto-scroll until they return to the bottom
+  // themselves. Stops streaming responses from yanking the viewport away
+  // mid-read. Cleared by handleChatScroll when the user reaches bottom.
+  chatUserScrolledUp?: boolean;
   logsScrollFrame: number | null;
   logsAtBottom: boolean;
   topbarObserver: ResizeObserver | null;
@@ -58,6 +63,13 @@ export function scheduleChatScroll(host: ScrollHost, force = false, smooth = fal
       // force=true only overrides when we haven't auto-scrolled yet (initial load).
       // After initial load, respect the user's scroll position.
       const effectiveForce = force && !host.chatHasAutoScrolled;
+      // Hard veto on auto-scroll once the user has explicitly scrolled up.
+      // Even an initial-load force shouldn't yank them back if they made an
+      // active choice to look up at older content.
+      if (host.chatUserScrolledUp && !effectiveForce) {
+        host.chatNewMessagesBelow = true;
+        return;
+      }
       const shouldStick =
         effectiveForce || host.chatUserNearBottom || distanceFromBottom < NEAR_BOTTOM_THRESHOLD;
 
@@ -87,6 +99,11 @@ export function scheduleChatScroll(host: ScrollHost, force = false, smooth = fal
         host.chatScrollTimeout = null;
         const latest = pickScrollTarget();
         if (!latest) {
+          return;
+        }
+        // Honor a freshly-set veto: if the user scrolled up between the
+        // initial scroll attempt and this retry firing, drop the retry.
+        if (host.chatUserScrolledUp && !effectiveForce) {
           return;
         }
         const latestDistanceFromBottom =
@@ -133,10 +150,20 @@ export function handleChatScroll(host: ScrollHost, event: Event) {
     return;
   }
   const scrollTop = Math.max(0, container.scrollTop);
-  const delta = scrollTop - host.chatLastScrollTop;
+  const previous = host.chatLastScrollTop;
+  const delta = scrollTop - previous;
   host.chatLastScrollTop = scrollTop;
-  const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+  const distanceFromBottom = container.scrollHeight - scrollTop - container.clientHeight;
+
+  // Direction tracking: if scrollTop decreased since last event, the user
+  // moved upward (programmatic scroll-to-bottom only ever increases scrollTop).
+  // We use a generous direction threshold so a single tiny mousewheel tick
+  // doesn't latch the veto on by accident.
+  if (delta < -8 && distanceFromBottom > NEAR_BOTTOM_THRESHOLD) {
+    host.chatUserScrolledUp = true;
+  }
   host.chatUserNearBottom = distanceFromBottom < NEAR_BOTTOM_THRESHOLD;
+
   const hasUsefulScroll = container.scrollHeight - container.clientHeight > NEAR_BOTTOM_THRESHOLD;
 
   if (!hasUsefulScroll || scrollTop <= HEADER_SHOW_TOP_THRESHOLD || host.chatUserNearBottom) {
@@ -147,8 +174,9 @@ export function handleChatScroll(host: ScrollHost, event: Event) {
     host.chatHeaderControlsHidden = false;
   }
 
-  // Clear the "new messages below" indicator when user scrolls back to bottom.
   if (host.chatUserNearBottom) {
+    // Reaching the bottom releases the veto and clears the badge.
+    host.chatUserScrolledUp = false;
     host.chatNewMessagesBelow = false;
   }
 }
@@ -168,6 +196,7 @@ export function resetChatScroll(host: ScrollHost) {
   host.chatLastScrollTop = 0;
   host.chatHeaderControlsHidden = false;
   host.chatNewMessagesBelow = false;
+  host.chatUserScrolledUp = false;
 }
 
 export function exportLogs(lines: string[], label: string) {
