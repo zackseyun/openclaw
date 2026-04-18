@@ -135,7 +135,7 @@ type TranscriptAppendResult = {
   error?: string;
 };
 
-type AbortOrigin = "rpc" | "stop-command";
+type AbortOrigin = "rpc" | "stop-command" | "supersede";
 
 type AbortedPartialSnapshot = {
   runId: string;
@@ -2100,6 +2100,27 @@ export const chatHandlers: GatewayRequestHandlers = {
         });
         return;
       }
+    }
+
+    // Barge-in: if any other run on this sessionKey is still in flight, abort it
+    // before starting the new turn. Same-runId retransmits and same-message
+    // dedupe hits are handled above, so this only supersedes genuinely newer turns.
+    let hasOtherRunOnSession = false;
+    for (const [otherRunId, other] of context.chatAbortControllers) {
+      if (otherRunId !== clientRunId && other.sessionKey === rawSessionKey) {
+        hasOtherRunOnSession = true;
+        break;
+      }
+    }
+    if (hasOtherRunOnSession) {
+      abortChatRunsForSessionKeyWithPartials({
+        context,
+        ops: createChatAbortOps(context),
+        sessionKey: rawSessionKey,
+        abortOrigin: "supersede",
+        stopReason: "superseded-by-new-message",
+        requester: resolveChatAbortRequester(client),
+      });
     }
     const explicitOriginTargetsPlugin = explicitOriginTargetsPluginBinding(
       explicitOriginResult.value,
