@@ -8,7 +8,7 @@ type AppendMessageArg = Parameters<SessionManager["appendMessage"]>[0];
 
 export type GatewayInjectedAbortMeta = {
   aborted: true;
-  origin: "rpc" | "stop-command";
+  origin: "rpc" | "stop-command" | "supersede";
   runId: string;
 };
 

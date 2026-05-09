@@ -2135,7 +2135,7 @@ export const chatHandlers: GatewayRequestHandlers = {
     // dedupe hits are handled above, so this only supersedes genuinely newer turns.
     if (sameSessionInFlight.length > 0) {
       const supersedeStart = Date.now();
-      const aborted = abortChatRunsForSessionKeyWithPartials({
+      const aborted = await abortChatRunsForSessionKeyWithPartials({
         context,
         ops: createChatAbortOps(context),
         sessionKey: rawSessionKey,
