@@ -173,7 +173,9 @@ function pruneStaleEntries(): void {
  * code-heavy and markdown-heavy prompts better than chars/4.
  */
 export function estimateTokens(text: string): number {
-  if (!text) return 0;
+  if (!text) {
+    return 0;
+  }
   const wordCount = text.split(/\s+/).filter(Boolean).length;
   return Math.ceil(wordCount * 1.3);
 }
@@ -274,10 +276,14 @@ export function getConfig(): RouterConfig {
 
 function resolveModel(role: ModelRole): ModelRole {
   // If the chosen model is disabled, walk the fallback chain
-  if (_config.modelEnabled[role]) return role;
+  if (_config.modelEnabled[role]) {
+    return role;
+  }
   const chain = FALLBACK_CHAINS[role];
   for (const fallback of chain) {
-    if (_config.modelEnabled[fallback]) return fallback;
+    if (_config.modelEnabled[fallback]) {
+      return fallback;
+    }
   }
   // Everything disabled? Return default
   return _config.defaultModel;
@@ -397,7 +403,9 @@ export function routeToModel(
   prompt: string,
   sessionId?: string,
 ): { modelOverride: string; providerOverride: string } | undefined {
-  if (!_config.enabled) return undefined;
+  if (!_config.enabled) {
+    return undefined;
+  }
 
   // Sticky routing: reuse first decision for this session
   if (_config.stickyRouting && sessionId) {

@@ -2147,7 +2147,7 @@ export const chatHandlers: GatewayRequestHandlers = {
         `[chat-debug] supersede fired runId=${clientRunId} sessionKey=${rawSessionKey} ` +
           `abortedCount=${aborted.runIds?.length ?? 0} ` +
           `abortedRunIds=${JSON.stringify(aborted.runIds ?? [])} ` +
-          `unauthorized=${aborted.unauthorized === true} ` +
+          `unauthorized=${aborted.unauthorized} ` +
           `durationMs=${Date.now() - supersedeStart}`,
       );
     } else {
@@ -2850,11 +2850,19 @@ export const chatHandlers: GatewayRequestHandlers = {
           const ageMs = entry ? Date.now() - entry.startedAtMs : 0;
           const wasAborted = entry ? entry.controller.signal.aborted : false;
           const abortReasonText = (() => {
-            if (!entry || !entry.controller.signal.aborted) return "none";
+            if (!entry || !entry.controller.signal.aborted) {
+              return "none";
+            }
             const reason = (entry.controller.signal as AbortSignal & { reason?: unknown }).reason;
-            if (reason === undefined || reason === null) return "(no reason)";
-            if (typeof reason === "string") return reason;
-            if (reason instanceof Error) return `${reason.name}:${reason.message}`;
+            if (reason === undefined || reason === null) {
+              return "(no reason)";
+            }
+            if (typeof reason === "string") {
+              return reason;
+            }
+            if (reason instanceof Error) {
+              return `${reason.name}:${reason.message}`;
+            }
             return String(reason);
           })();
           context.logGateway.info(

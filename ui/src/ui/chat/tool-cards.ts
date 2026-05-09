@@ -424,11 +424,19 @@ function renderCollapsedToolSummary(params: {
 function buildToolSummaryText(card: ToolCard): string | undefined {
   const display = resolveToolDisplay({ name: card.name, args: card.args });
   const parts: string[] = [];
-  if (display.verb) parts.push(display.verb);
-  if (display.detail) parts.push(display.detail);
-  if (parts.length === 0) return undefined;
+  if (display.verb) {
+    parts.push(display.verb);
+  }
+  if (display.detail) {
+    parts.push(display.detail);
+  }
+  if (parts.length === 0) {
+    return undefined;
+  }
   const text = parts.join(" ").replace(/\s+/g, " ").trim();
-  if (!text) return undefined;
+  if (!text) {
+    return undefined;
+  }
   const MAX = 120;
   return text.length > MAX ? text.slice(0, MAX - 1) + "…" : text;
 }
