@@ -1,4 +1,6 @@
+import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
+import { fileURLToPath } from "node:url";
 import {
   detectChangedLanesForPaths,
   listChangedPathsFromGit,
@@ -325,7 +327,7 @@ function parseArgs(argv) {
 
 function isDirectRun() {
   const direct = process.argv[1];
-  return Boolean(direct && import.meta.url.endsWith(direct));
+  return Boolean(direct && resolve(direct) === fileURLToPath(import.meta.url));
 }
 
 if (isDirectRun()) {

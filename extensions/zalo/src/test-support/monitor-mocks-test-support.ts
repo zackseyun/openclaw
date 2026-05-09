@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { createPluginRuntimeMock } from "openclaw/plugin-sdk/channel-test-helpers";
 import {
   createEmptyPluginRegistry,
@@ -15,8 +16,8 @@ type WebhookModule = typeof import("../monitor.webhook.js");
 const monitorModuleUrl = new URL("../monitor.ts", import.meta.url).href;
 const secretInputModuleUrl = new URL("../secret-input.ts", import.meta.url).href;
 const webhookModuleUrl = new URL("../monitor.webhook.ts", import.meta.url).href;
-const apiModuleId = new URL("../api.js", import.meta.url).pathname;
-const runtimeModuleId = new URL("../runtime.js", import.meta.url).pathname;
+const apiModuleId = fileURLToPath(new URL("../api.js", import.meta.url));
+const runtimeModuleId = fileURLToPath(new URL("../runtime.js", import.meta.url));
 
 type UnknownMock = Mock<(...args: unknown[]) => unknown>;
 type AsyncUnknownMock = Mock<(...args: unknown[]) => Promise<unknown>>;
