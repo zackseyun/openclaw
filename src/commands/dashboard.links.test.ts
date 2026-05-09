@@ -42,14 +42,14 @@ function resetRuntime() {
   runtime.exit.mockClear();
 }
 
-function mockSnapshot(token: unknown = "abc") {
+function mockSnapshot(token: unknown = "abc", opts?: { publicUrl?: string }) {
   readConfigFileSnapshotMock.mockResolvedValue({
     path: "/tmp/openclaw.json",
     exists: true,
     raw: "{}",
     parsed: {},
     valid: true,
-    config: { gateway: { auth: { token } } },
+    config: { gateway: { auth: { token }, controlUi: { publicUrl: opts?.publicUrl } } },
     issues: [],
     legacyIssues: [],
   });
@@ -185,6 +185,31 @@ describe("dashboardCommand", () => {
     expect(allLogs).toMatch(/OPENCLAW_GATEWAY_TOKEN/);
     // UX: hint must name the URL fragment key so the user knows the syntax.
     expect(allLogs).toContain("key `token`");
+  });
+
+  it("uses configured public Control UI URL for copied/opened dashboard links", async () => {
+    mockSnapshot("abc", { publicUrl: "https://zack.openclaw.cartha.ai" });
+    copyToClipboardMock.mockResolvedValue(true);
+    detectBrowserOpenSupportMock.mockResolvedValue({ ok: true });
+    openUrlMock.mockResolvedValue(true);
+
+    await dashboardCommand(runtime);
+
+    expect(copyToClipboardMock).toHaveBeenCalledWith("https://zack.openclaw.cartha.ai/#token=abc");
+    expect(openUrlMock).toHaveBeenCalledWith("https://zack.openclaw.cartha.ai/#token=abc");
+    expect(runtime.log).toHaveBeenCalledWith("Dashboard URL: https://zack.openclaw.cartha.ai/");
+  });
+
+  it("ignores invalid public Control UI URLs", async () => {
+    mockSnapshot("abc", { publicUrl: "file:///tmp/openclaw.html" });
+    copyToClipboardMock.mockResolvedValue(true);
+    detectBrowserOpenSupportMock.mockResolvedValue({ ok: true });
+    openUrlMock.mockResolvedValue(true);
+
+    await dashboardCommand(runtime);
+
+    expect(copyToClipboardMock).toHaveBeenCalledWith("http://127.0.0.1:18789/#token=abc");
+    expect(openUrlMock).toHaveBeenCalledWith("http://127.0.0.1:18789/#token=abc");
   });
 
   it("respects --no-open and tells user token URL is in clipboard", async () => {

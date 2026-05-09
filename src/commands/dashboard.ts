@@ -14,6 +14,27 @@ type DashboardOptions = {
   noOpen?: boolean;
 };
 
+function normalizePublicDashboardUrl(raw: string | undefined): string | null {
+  const value = raw?.trim();
+  if (!value) {
+    return null;
+  }
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return null;
+    }
+    url.username = "";
+    url.password = "";
+    url.search = "";
+    url.hash = "";
+    url.pathname = url.pathname.endsWith("/") ? url.pathname : `${url.pathname}/`;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 export async function dashboardCommand(
   runtime: RuntimeEnv = defaultRuntime,
   options: DashboardOptions = {},
@@ -40,14 +61,16 @@ export async function dashboardCommand(
     basePath,
     tlsEnabled: cfg.gateway?.tls?.enabled === true,
   });
+  const publicDashboardUrl = normalizePublicDashboardUrl(cfg.gateway?.controlUi?.publicUrl);
+  const httpUrl = publicDashboardUrl ?? links.httpUrl;
   // Avoid embedding externally managed SecretRef tokens in terminal/clipboard/browser args.
   const includeTokenInUrl = token.length > 0 && !resolvedToken.secretRefConfigured;
   // Prefer URL fragment to avoid leaking auth tokens via query params.
   const dashboardUrl = includeTokenInUrl
-    ? `${links.httpUrl}#token=${encodeURIComponent(token)}`
-    : links.httpUrl;
+    ? `${httpUrl}#token=${encodeURIComponent(token)}`
+    : httpUrl;
 
-  runtime.log(`Dashboard URL: ${links.httpUrl}`);
+  runtime.log(`Dashboard URL: ${httpUrl}`);
   if (includeTokenInUrl) {
     runtime.log("Token auto-auth included in browser/clipboard URL.");
   }

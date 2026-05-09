@@ -455,6 +455,7 @@ See [Inferred commitments](/concepts/commitments).
       // embedSandbox: "scripts", // strict | scripts | trusted
       // allowExternalEmbedUrls: false, // dangerous: allow absolute external http(s) embed URLs
       // chatMessageMaxWidth: "min(1280px, 82%)", // optional grouped chat message max-width
+      // publicUrl: "https://control.example.com", // optional public browser URL for copied/opened dashboard links
       // allowedOrigins: ["https://control.example.com"], // required for non-loopback Control UI
       // dangerouslyAllowHostHeaderOriginFallback: false, // dangerous Host-header origin fallback mode
       // allowInsecureAuth: false,
@@ -521,6 +522,7 @@ See [Inferred commitments](/concepts/commitments).
   Default `false`.
 - `controlUi.allowedOrigins`: explicit browser-origin allowlist for Gateway WebSocket connects. Required when browser clients are expected from non-loopback origins.
 - `controlUi.chatMessageMaxWidth`: optional max-width for grouped Control UI chat messages. Accepts constrained CSS width values such as `960px`, `82%`, `min(1280px, 82%)`, and `calc(100% - 2rem)`.
+- `controlUi.publicUrl`: optional public browser base URL for the Control UI when a local Gateway is exposed through a reverse proxy or tunnel. `openclaw dashboard` and the Control UI signed-link button use this URL for copied/opened links, while auth still follows `gateway.auth`.
 - `controlUi.dangerouslyAllowHostHeaderOriginFallback`: dangerous mode that enables Host-header origin fallback for deployments that intentionally rely on Host-header origin policy.
 - `remote.transport`: `ssh` (default) or `direct` (ws/wss). For `direct`, `remote.url` must be `ws://` or `wss://`.
 - `OPENCLAW_ALLOW_INSECURE_PRIVATE_WS=1`: client-side process-environment

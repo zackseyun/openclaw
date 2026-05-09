@@ -85,6 +85,7 @@ export type AppViewState = {
   embedSandboxMode: EmbedSandboxMode;
   allowExternalEmbedUrls: boolean;
   chatMessageMaxWidth?: string | null;
+  controlUiPublicUrl?: string | null;
   sessionKey: string;
   chatLoading: boolean;
   chatSending: boolean;

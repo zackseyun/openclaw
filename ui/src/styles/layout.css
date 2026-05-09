@@ -276,6 +276,62 @@
   font-size: 13px;
 }
 
+.topbar-signed-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--border) 86%, transparent);
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--bg-elevated) 82%, transparent);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast) ease,
+    background var(--duration-fast) ease,
+    color var(--duration-fast) ease;
+}
+
+.topbar-signed-link:hover {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: color-mix(in srgb, var(--accent-subtle) 70%, transparent);
+  color: var(--text);
+}
+
+.topbar-signed-link:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.topbar-signed-link[disabled] {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.topbar-signed-link[data-copied="1"] {
+  border-color: var(--ok-subtle);
+  background: var(--ok-subtle);
+  color: var(--ok);
+}
+
+.topbar-signed-link[data-error="1"] {
+  border-color: var(--danger-subtle);
+  background: var(--danger-subtle);
+  color: var(--danger);
+}
+
+.topbar-signed-link__icon {
+  display: inline-flex;
+}
+
+.topbar-signed-link__icon svg {
+  width: 14px;
+  height: 14px;
+}
+
 .topbar-search {
   display: inline-flex;
   align-items: center;

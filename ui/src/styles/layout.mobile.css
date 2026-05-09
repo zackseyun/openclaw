@@ -331,6 +331,14 @@
     flex: 1;
   }
 
+  .topbar-signed-link {
+    padding: 0 9px;
+  }
+
+  .topbar-signed-link__label {
+    display: none;
+  }
+
   .topbar-theme-mode {
     display: none;
   }

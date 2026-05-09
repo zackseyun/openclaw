@@ -23,6 +23,7 @@ export type ControlUiBootstrapState = {
   embedSandboxMode: ControlUiEmbedSandboxMode;
   allowExternalEmbedUrls: boolean;
   chatMessageMaxWidth?: string | null;
+  controlUiPublicUrl?: string | null;
   sessionKey?: string | null;
   hello?: { auth?: { deviceToken?: string | null } | null } | null;
   settings?: { token?: string | null } | null;
@@ -135,6 +136,7 @@ export async function loadControlUiBootstrapConfig(
       typeof parsed.chatMessageMaxWidth === "string" && parsed.chatMessageMaxWidth.trim()
         ? parsed.chatMessageMaxWidth
         : null;
+    state.controlUiPublicUrl = normalizeOptionalString(parsed.publicUrl) ?? null;
   } catch {
     // Ignore bootstrap failures; UI will update identity after connecting.
   }

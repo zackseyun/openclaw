@@ -21,6 +21,7 @@ describe("loadControlUiBootstrapConfig", () => {
         embedSandbox: "scripts",
         allowExternalEmbedUrls: true,
         chatMessageMaxWidth: "min(1280px, 82%)",
+        publicUrl: "https://control.example.com",
       }),
     });
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
@@ -37,6 +38,7 @@ describe("loadControlUiBootstrapConfig", () => {
       embedSandboxMode: "scripts" as const,
       allowExternalEmbedUrls: false,
       chatMessageMaxWidth: null,
+      controlUiPublicUrl: null,
       serverVersion: null,
     };
 
@@ -57,6 +59,7 @@ describe("loadControlUiBootstrapConfig", () => {
     expect(state.embedSandboxMode).toBe("scripts");
     expect(state.allowExternalEmbedUrls).toBe(true);
     expect(state.chatMessageMaxWidth).toBe("min(1280px, 82%)");
+    expect(state.controlUiPublicUrl).toBe("https://control.example.com");
 
     vi.unstubAllGlobals();
   });

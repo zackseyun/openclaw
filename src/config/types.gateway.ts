@@ -122,6 +122,8 @@ export type GatewayControlUiConfig = {
   allowExternalEmbedUrls?: boolean;
   /** Optional max-width for grouped Control UI chat messages (default: min(900px, 68%)). */
   chatMessageMaxWidth?: string;
+  /** Optional public browser URL for copy/open flows when the local Gateway is exposed through a proxy/tunnel. */
+  publicUrl?: string;
   /** Allowed browser origins for Control UI/WebChat websocket connections. */
   allowedOrigins?: string[];
   /**

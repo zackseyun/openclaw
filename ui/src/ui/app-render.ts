@@ -141,6 +141,7 @@ import {
   parseAgentSessionKey,
   resolveAgentIdFromSessionKey,
 } from "./session-key.ts";
+import { buildSignedControlUiLink } from "./signed-control-link.ts";
 import { loadLocalAssistantIdentity } from "./storage.ts";
 import { normalizeOptionalString } from "./string-coerce.ts";
 import { isRenderableControlUiAvatarUrl } from "./views/agents-utils.ts";
@@ -607,6 +608,76 @@ export function extractQuickSettingsSecurity(state: AppViewState): {
 
 function resolveQuickSettingsSessionRow(state: AppViewState) {
   return state.sessionsResult?.sessions?.find((row) => row.key === state.sessionKey);
+}
+
+const SIGNED_LINK_IDLE_LABEL = "Copy signed link";
+const SIGNED_LINK_COPIED_LABEL = "Signed link copied";
+const SIGNED_LINK_ERROR_LABEL = "Copy failed";
+
+function setSignedLinkButtonLabel(button: HTMLButtonElement, label: string) {
+  button.title = label;
+  button.setAttribute("aria-label", label);
+}
+
+function renderSignedControlUiLinkAction(state: AppViewState) {
+  const signedLink = buildSignedControlUiLink({
+    token: state.settings.token,
+    publicUrl: state.controlUiPublicUrl,
+    basePath: state.basePath,
+  });
+  if (!signedLink) {
+    return nothing;
+  }
+
+  return html`
+    <button
+      type="button"
+      class="topbar-signed-link"
+      title=${SIGNED_LINK_IDLE_LABEL}
+      aria-label=${SIGNED_LINK_IDLE_LABEL}
+      @click=${async (event: Event) => {
+        const button = event.currentTarget as HTMLButtonElement | null;
+        if (!button || button.dataset.copying === "1") {
+          return;
+        }
+
+        button.dataset.copying = "1";
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+        try {
+          await navigator.clipboard.writeText(signedLink);
+          if (!button.isConnected) {
+            return;
+          }
+          button.dataset.copied = "1";
+          setSignedLinkButtonLabel(button, SIGNED_LINK_COPIED_LABEL);
+        } catch {
+          if (!button.isConnected) {
+            return;
+          }
+          button.dataset.error = "1";
+          setSignedLinkButtonLabel(button, SIGNED_LINK_ERROR_LABEL);
+        } finally {
+          if (button.isConnected) {
+            delete button.dataset.copying;
+            button.disabled = false;
+            button.removeAttribute("aria-busy");
+            window.setTimeout(() => {
+              if (!button.isConnected) {
+                return;
+              }
+              delete button.dataset.copied;
+              delete button.dataset.error;
+              setSignedLinkButtonLabel(button, SIGNED_LINK_IDLE_LABEL);
+            }, 1500);
+          }
+        }
+      }}
+    >
+      <span class="topbar-signed-link__icon" aria-hidden="true">${icons.link}</span>
+      <span class="topbar-signed-link__label">Link</span>
+    </button>
+  `;
 }
 
 function renderCronQuickCreateForTab(
@@ -1427,6 +1498,7 @@ export function renderApp(state: AppViewState) {
               <kbd class="topbar-search__kbd">⌘K</kbd>
             </button>
             <div class="topbar-status">
+              ${renderSignedControlUiLinkAction(state)}
               ${isChat ? renderChatMobileToggle(state) : nothing}
               ${renderTopbarThemeModeToggle(state)}
             </div>

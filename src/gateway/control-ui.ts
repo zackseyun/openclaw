@@ -877,6 +877,7 @@ export async function handleControlUiHttpRequest(
             : "scripts",
       allowExternalEmbedUrls: config?.gateway?.controlUi?.allowExternalEmbedUrls === true,
       chatMessageMaxWidth: config?.gateway?.controlUi?.chatMessageMaxWidth,
+      publicUrl: config?.gateway?.controlUi?.publicUrl,
     } satisfies ControlUiBootstrapConfig);
     return true;
   }
