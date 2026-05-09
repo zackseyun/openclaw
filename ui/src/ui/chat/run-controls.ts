@@ -41,7 +41,6 @@ export function renderChatRunControls(props: ChatRunControlsProps) {
         ${icons.download}
       </button>
       ${props.extraControlsBeforeSend ?? nothing}
-
       ${props.canAbort
         ? html`
             <button
