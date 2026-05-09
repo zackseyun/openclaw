@@ -594,7 +594,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
 
     const register = context.registerToolEventRecipient as unknown as ReturnType<typeof vi.fn>;
     expect(register).toHaveBeenCalledWith("run-current", "conn-1");
-    expect(register).toHaveBeenCalledWith("run-same-session", "conn-1");
+    expect(register).not.toHaveBeenCalledWith("run-same-session", "conn-1");
     expect(register).not.toHaveBeenCalledWith("run-other-session", "conn-1");
   });
 

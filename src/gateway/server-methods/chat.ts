@@ -2122,7 +2122,7 @@ export const chatHandlers: GatewayRequestHandlers = {
       });
     }
     const sameSessionInFlight = inFlightSnapshot.filter((r) => r.sameSession);
-    context.logGateway.info(
+    context.logGateway.info?.(
       `[chat-debug] arrive runId=${clientRunId} sessionKey=${rawSessionKey} ` +
         `inFlightTotal=${inFlightSnapshot.length} sameSession=${sameSessionInFlight.length} ` +
         `sameSessionRuns=${JSON.stringify(
@@ -2143,7 +2143,7 @@ export const chatHandlers: GatewayRequestHandlers = {
         stopReason: "superseded-by-new-message",
         requester: resolveChatAbortRequester(client),
       });
-      context.logGateway.info(
+      context.logGateway.info?.(
         `[chat-debug] supersede fired runId=${clientRunId} sessionKey=${rawSessionKey} ` +
           `abortedCount=${aborted.runIds?.length ?? 0} ` +
           `abortedRunIds=${JSON.stringify(aborted.runIds ?? [])} ` +
@@ -2151,7 +2151,7 @@ export const chatHandlers: GatewayRequestHandlers = {
           `durationMs=${Date.now() - supersedeStart}`,
       );
     } else {
-      context.logGateway.info(
+      context.logGateway.info?.(
         `[chat-debug] supersede skipped runId=${clientRunId} sessionKey=${rawSessionKey} reason=no-other-runs`,
       );
     }
@@ -2865,7 +2865,7 @@ export const chatHandlers: GatewayRequestHandlers = {
             }
             return String(reason);
           })();
-          context.logGateway.info(
+          context.logGateway.info?.(
             `[chat-debug] dispatch finalized runId=${clientRunId} ageMs=${ageMs} ` +
               `wasAborted=${wasAborted} abortReason=${JSON.stringify(abortReasonText)}`,
           );
